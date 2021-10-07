@@ -11,7 +11,7 @@ Train and test image models
 ### Imports
 
 import argparse
-
+import os
 
 import torch
 import torchvision
@@ -27,7 +27,7 @@ import datasets
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--mode', type=str, default='train', help='Train or test')
+parser.add_argument('--mode', type=str, default='train', help='Train, sample, or test')
 parser.add_argument('--method', type=str, default='wgan', help='The GAN model type being used')
 parser.add_argument('--loadfrom', type=str, default=None, help='Model to load from')
 parser.add_argument('--basename', type=str, default='model', help='Base name to save model to for checkpointing')
@@ -459,6 +459,30 @@ def train_bigan(model, dataset, opt):
 
 
 
+
+
+
+def sample_gan(opt):
+    fname = os.path.join(opt.modeldir, opt.loadfrom)
+    params = torch.load(fname)
+    loaded_opt = params['opt']
+    loaded_opt.device = opt.device
+    print("Loaded options:", loaded_opt)
+    model = models.GAN_Model(loaded_opt, load_params = params)
+    model.netg.eval()
+    
+    for i in range(2):
+        sample_codes = torch.randn(64, 100, device=opt.device)
+        sample_ims = model.netg(sample_codes)
+        sample_grid = torchvision.utils.make_grid(sample_ims, nrow=8)
+    
+        samples_processed = sample_grid.detach().permute(1,2,0).cpu().numpy()
+        samples_processed = (samples_processed+1)/2
+        plt.imshow(samples_processed)
+        plt.show()
+
+
+
 ### Loading and testing gan models
 
 
@@ -486,13 +510,16 @@ def run_regular_training(opt):
 if __name__=='__main__':
     opt=parser.parse_args()
     
-    if opt.method == 'wgan':
-        run_wgan_training(opt)
-    elif opt.method == 'bigan':
-        run_bigan_training(opt)
-    elif opt.method == 'regular':
-        run_regular_training(opt)
-
+    if opt.mode == 'train':
+        if opt.method == 'wgan':
+            run_wgan_training(opt)
+        elif opt.method == 'bigan':
+            run_bigan_training(opt)
+        elif opt.method == 'regular':
+            run_regular_training(opt)
+    elif opt.mode == 'sample':
+        sample_gan(opt)
+    
 
 
 

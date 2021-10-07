@@ -227,7 +227,7 @@ class NetR32(nn.Module):
         nn.LeakyReLU(0.2, inplace=True),
         nn.Linear(opt.ndf*4, opt.ndf*4),
         nn.LeakyReLU(0.2,inplace=True),
-        nn.Linear(opt.ndf*4, 1)
+        nn.Linear(opt.ndf*4, opt.regressor_out_dims)
     )
 
 
