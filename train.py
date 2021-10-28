@@ -60,7 +60,10 @@ def train(model, train_loader, train_opts, val_loader=None, tracker=None, run_op
 
     model.functions.set_mode(model, 'train')
     dataiter = iter(train_loader)
-    time1 = time.time()
+
+#    time1 = time.time()
+    timer = utils.Clock(total_ticks = train_opts.n_epochs)
+    timer.start()
     while iternum < train_opts.n_iters and not model.functions.stop(model):
         batch = next(dataiter, None)
         if batch is None:
@@ -76,10 +79,13 @@ def train(model, train_loader, train_opts, val_loader=None, tracker=None, run_op
                     shot = snapshot[key]
                     tracker.snapshot(key, epoch, shot.item, tensorboard_type=shot.dtype)
 
-            time2 = time.time()
+#            time2 = time.time()
+            timer.tick()
             epoch += 1
-            tracker.update_epoch(epoch=epoch, print_averages=True, time=time2-time1, print_time=True)
-            time1 = time2
+            tracker.update_epoch(epoch=epoch, print_averages=True, time=timer.last_tick_time(), print_time=True)
+#            time1 = time2
+            remaining_seconds = timer.remaining_seconds()
+            print("ETA: {0:8.2f} minutes / {1:8.2f} hours".format(remaining_seconds/60, remaining_seconds/3600))
 
             if (epoch+1) % train_opts.checkpoint_every == 0:
                 print("Checkpointing")

@@ -272,7 +272,7 @@ class Clock:
         time2 = time.time()
         difference = time2-self.time
         self._last_tick_time = difference
-        if self.num_ticks > 2:
+        if self.num_ticks > 2 or difference > 20:
             if self.moving_average is None:
                 self.moving_average = difference
             else:
