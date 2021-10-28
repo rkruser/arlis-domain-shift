@@ -39,6 +39,8 @@ The project can be extended as follows:
 - You can create a new type of model by adding a build function to build_models.py and associated helper functions to model_functions.py
 - You can create a new type of execution mode by adding a mode handler to main.py and a task_opt_function for that mode to config.py
 
+The primary data structure for tracking options and model structure is the EasyDict, defined in utils.py, which is simply a dictionary which also allows you to access the elements via the dot operator. i.e. d = EasyDict(); d['entry1'] = 4; d.entry2 = 6; print(d.entry1, d['entry2'])
+
 
 
 Command examples:
