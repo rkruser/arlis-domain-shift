@@ -297,7 +297,7 @@ def calculate_jacobians_opts(all_opts, parameters, basename):
     all_opts.training_opts = training_opts
 
     all_opts.training = False
-    all_opts.training_opts.batch_size=10
+    all_opts.training_opts.batch_size=20
     all_opts.training_opts.shuffle=False
     all_opts.training_opts.drop_last = False
 

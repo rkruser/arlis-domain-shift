@@ -527,6 +527,9 @@ class Log_Jacobian_Determinant(Model_Function_Base):
         num_points = z_codes.size(0)
         output_size = output.numel() // num_points
         input_size = z_codes.numel() // num_points
+
+
+        output = output.view(num_points, output_size)
         
         #print("Starting gradients")
         gradients = [torch.autograd.grad(outputs=output[:,k], inputs=z_codes,

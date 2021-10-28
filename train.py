@@ -120,9 +120,16 @@ def simple_regressor_run(model, dataloader, run_opts):
 def invert_generator(model, dataloader, run_opts):
     model.functions.set_mode(model, 'eval')
     inverted = []
+
+    timer = utils.Clock(total_ticks=len(dataloader))
+    timer.start()
     for i,batch in enumerate(dataloader):
         inverted_batch =model.functions.invert(model, batch)
         inverted.append(inverted_batch)
+
+        timer.tick()
+        remaining_seconds = timer.remaining_seconds()
+        print("Inverted {0} of {1}, batch time = {2:8.2f}, eta = {3:8.2f} seconds".format(i,len(dataloader), timer.last_tick_time(), remaining_seconds), end='\r')
         
     inverted = collate_functions.tensor_concat(inverted)
 
@@ -133,10 +140,20 @@ def invert_generator(model, dataloader, run_opts):
 def calculate_jacobians(model, dataloader, run_opts):
     model.functions.set_mode(model, 'eval')
     jacobians = []
+    time1 = time.time()
+    moving_average = None
+
+    timer = utils.Clock(total_ticks=len(dataloader))
+    timer.start()
     for i,batch in enumerate(dataloader):
         jacobians_batch = model.functions.jacobian(model, batch)
         jacobians.append(jacobians_batch)
-    
+
+
+        timer.tick()
+        remaining_seconds = timer.remaining_seconds()
+        print("Processed Jacobians {0} of {1}, batch time = {2:8.2f}, eta = {3:6.2f} minutes / {4:4.2f} hours".format(i,len(dataloader), timer.last_tick_time(), remaining_seconds/60, remaining_seconds/3600), end='\r')
+
     jacobians = collate_functions.tensor_concat(jacobians)
 
     return jacobians

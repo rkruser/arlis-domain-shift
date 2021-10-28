@@ -9,6 +9,7 @@ import sys
 import ast
 import argparse
 import copy
+import time
 
 import torch
 
@@ -245,6 +246,56 @@ def collate_dicts(dict_list, dict_type = EasyDict, cast_func = None, ignore_unde
 
 
 
+
+
+
+
+"""
+Miscellaneous classes
+"""
+class Clock:
+    def __init__(self, eps = 0.1, total_ticks=None):
+        self.moving_average = None
+        self.time = None
+        self.num_ticks = 0
+#        self.remaining_time_minutes = 'indeterminate'
+#        self.remaining_time_hours = 'indeterminate'
+        self.eps = eps
+
+        self.total_ticks = total_ticks
+        self._last_tick_time = None
+        
+    def start(self):
+        self.time = time.time()
+
+    def tick(self):
+        time2 = time.time()
+        difference = time2-self.time
+        self._last_tick_time = difference
+        if self.num_ticks > 2:
+            if self.moving_average is None:
+                self.moving_average = difference
+            else:
+                self.moving_average = self.eps*difference + (1-self.eps)*self.moving_average
+
+        self.time = time2
+        self.num_ticks += 1
+
+    def remaining_seconds(self, ticks_to_go = None):
+        if ticks_to_go is None:
+            if self.total_ticks is None:
+                return 'Not enough info to estimate time remaining'
+            ticks_to_go = self.total_ticks - self.num_ticks
+        if self.moving_average is None:
+            return float('inf')
+        else:
+            return self.moving_average*ticks_to_go
+
+    def last_tick_time(self):
+        return self._last_tick_time
+
+
+
 def make_directories(base_dirs, base_model_name=None):
     for d in base_dirs:
         if d is None:
@@ -256,6 +307,13 @@ def make_directories(base_dirs, base_model_name=None):
         subdir = os.path.join(d, base_model_name)
         if not os.path.isdir(subdir):
             os.makedirs(subdir)
+
+
+
+
+
+
+
 
 
 
