@@ -72,7 +72,6 @@ class DatasetWrapper(torch.utils.data.Dataset):
     def __init__(self, dataset, keys=keysets.image_and_label, index_casts=None):
         self.dataset = dataset
         self.keys = keys
-        self.collate_fn = collate_fn
 
         if len(keys) == 1:
             self.item_cast = lambda x : (x,)
