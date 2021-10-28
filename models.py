@@ -18,6 +18,8 @@ import torch.nn as nn
 import os
 
 
+from utils import EasyDict as edict
+
 ### Generator DCGAN
 
 # Model for 32 by 32 images
@@ -94,50 +96,6 @@ class NetD32(nn.Module):
     return prediction
 
 
-class NetD32_bigan(nn.Module):
-  def __init__(self, opt):
-    super().__init__()
-    self.main = nn.Sequential(
-        # input is (nc) x 32 x 32
-        nn.Conv2d(opt.nc, opt.ndf, 4, 2, 1, bias=False),
-        nn.BatchNorm2d(opt.ndf),
-        nn.LeakyReLU(0.2, inplace=True),
-        # state size. (ndf) x 16 x 16
-        nn.Conv2d(opt.ndf, opt.ndf * 2, 4, 2, 1, bias=False),
-        nn.BatchNorm2d(opt.ndf * 2),
-        nn.LeakyReLU(0.2, inplace=True),
-        # state size. (ndf*2) x 8 x 8
-        nn.Conv2d(opt.ndf * 2, opt.ndf * 4, 4, 2, 1, bias=False),
-        # for 28 x 28
-       # nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 2, bias=False),
-        nn.BatchNorm2d(opt.ndf * 4),
-        nn.LeakyReLU(0.2, inplace=True),
-        # state size. (ndf*4) x 4 x 4
-        
-        nn.Conv2d(opt.ndf*4, opt.ndf*4, 4, 1, 0, bias=False),
-        nn.BatchNorm2d(opt.ndf*4), #state size: (ndf*4)x1x1
-        nn.LeakyReLU(0.2, inplace=True)
-    )
-
-    # Predictor takes main output and produces a probability
-    self.predictor = nn.Sequential(
-        nn.Linear(opt.nz+opt.ndf*4, opt.ndf*4),
-        nn.LeakyReLU(0.2, inplace=True),
-        nn.Linear(opt.ndf*4, opt.ndf*4),
-        nn.LeakyReLU(0.2, inplace=True),
-        nn.Linear(opt.ndf*4, opt.ndf*4),
-        nn.LeakyReLU(0.2,inplace=True),
-        nn.Linear(opt.ndf*4, 1)
-    )
-
-
-
-  def forward(self, codes, images):
-    output = self.main(images)
-    output = output.reshape(output.size(0),-1)
-    output = torch.cat((codes,output),dim=1)
-    prediction = self.predictor(output).squeeze(1)
-    return prediction
 
 
 
@@ -239,6 +197,65 @@ class NetR32(nn.Module):
     return prediction
 
 
+# General classifier
+
+class NetC32(nn.Module):
+    def __init__(self, opt):
+        super().__init__()
+        self.main = nn.Sequential(
+        # input is (nc) x 32 x 32
+        nn.Conv2d(opt.nc, opt.ndf, 4, 2, 1, bias=False),
+        nn.BatchNorm2d(opt.ndf),
+        nn.LeakyReLU(0.2, inplace=True),
+        # state size. (ndf) x 16 x 16
+        nn.Conv2d(opt.ndf, opt.ndf * 2, 4, 2, 1, bias=False),
+        nn.BatchNorm2d(opt.ndf * 2),
+        nn.LeakyReLU(0.2, inplace=True),
+        # state size. (ndf*2) x 8 x 8
+        nn.Conv2d(opt.ndf * 2, opt.ndf * 4, 4, 2, 1, bias=False),
+        # for 28 x 28
+           # nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 2, bias=False),
+        nn.BatchNorm2d(opt.ndf * 4),
+        nn.LeakyReLU(0.2, inplace=True),
+        # state size. (ndf*4) x 4 x 4
+        
+        nn.Conv2d(opt.ndf*4, opt.ndf*4, 4, 1, 0, bias=False),
+        nn.BatchNorm2d(opt.ndf*4), #state size: (ndf*4)x1x1
+        nn.LeakyReLU(0.2, inplace=True)
+        )
+        
+        # Predictor takes main output and produces a probability
+        self.embedder = nn.Sequential(
+        nn.Linear(opt.ndf*4, opt.ndf*4),
+        nn.LeakyReLU(0.2, inplace=True),
+        nn.Linear(opt.ndf*4, opt.ndf*4),
+        nn.LeakyReLU(0.2, inplace=True),
+        nn.Linear(opt.ndf*4, opt.ndf*4),
+        nn.LeakyReLU(0.2,inplace=True),
+        nn.Linear(opt.ndf*4, opt.embedding_dims)
+        )
+        
+        self.predictor = nn.Sequential(
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(opt.embedding_dims, opt.output_dims),
+            nn.LogSoftmax(dim=1)
+            )
+
+    def embed(self, images):
+        output = self.main(images)
+        output = output.reshape(output.size(0),-1)
+        embedding = self.embedder(output)
+        return embedding
+    
+    
+    def forward(self, images):
+        embedding = self.embed(images)
+        prediction = self.predictor(embedding)
+        return prediction
+
+
+
+
 
 
 
@@ -257,201 +274,66 @@ def weights_init(m):
             torch.nn.init.constant_(m.bias, 0.0)
 
 
-# Base class
-class Model:
-    def __init__(self, opt):
-        pass
 
-    def checkpoint(self):
-        pass    
+
+
+
+
+
+        
+
+
+def load_torch_class(classname, *args, **kwargs):
+    kwargs = edict(**kwargs)
+    if classname == 'netg32':
+        opt = edict()
+        opt.nz = kwargs.latent_dimension
+        opt.ngf = kwargs.hidden_dimension_base
+        opt.nc = kwargs.output_dimension[0]
+        return NetG32(opt)
+    elif classname == 'netd32':
+        opt = edict()
+        opt.ndf = kwargs.hidden_dimension_base
+        opt.nc = kwargs.input_dimension[0]
+        return NetD32(opt)
+    elif classname == 'adam':
+        return torch.optim.Adam(*args, **kwargs)
+    elif classname == 'steplr':
+        return torch.optim.lr_scheduler.StepLR(*args, **kwargs)
+    elif classname == 'nete32':
+        opt = edict()
+        opt.nz = kwargs.output_dimension
+        opt.ndf = kwargs.hidden_dimension_base
+        opt.nc = kwargs.input_dimension[0]
+        return NetE32(opt)
+    elif classname == 'netr32':
+        opt = edict()
+        opt.ndf = kwargs.hidden_dimension_base
+        opt.nc = kwargs.input_dimension[0]
+        opt.regressor_out_dims = kwargs.output_dimension
+        return NetR32(opt)
+    elif classname == 'netc32':
+        opt = edict()
+        opt.ndf = kwargs.hidden_dimension_base
+        opt.nc = kwargs.input_dimension[0]
+        opt.embedding_dims = kwargs.feature_dimension
+        opt.output_dims = kwargs.output_dimension
+        return NetC32(opt)
+    elif classname == 'testg':
+        return torch.nn.Linear(8,64)
+    elif classname == 'testd':
+        return torch.nn.Linear(64,1)
+    elif classname == 'teste':
+        return torch.nn.Linear(64,8)
+    elif classname == 'testr':
+        return torch.nn.Linear(64,2)
+    elif classname == 'testc':
+        return torch.nn.Linear(64,1)
+
     
-    # Not sure if should implement this, but maybe
-    def load(self):
-        pass
 
 
 
-class GAN_Model(Model):
-    def __init__(self, opt, load_params=None):
-        self.opt = opt
-        
-        self.netg = NetG32(opt).to(opt.device)
-        self.netd = NetD32(opt).to(opt.device)
-        #self.nete = NetE32(opt).to(opt.device)      
-
-        
-        self.netg_optim = torch.optim.Adam(self.netg.parameters(), lr=opt.lr, betas=opt.betas, eps=opt.eps, weight_decay=opt.weight_decay, amsgrad=opt.amsgrad)
-        self.netd_optim = torch.optim.Adam(self.netd.parameters(), lr=opt.lr, betas=opt.betas, eps=opt.eps, weight_decay=opt.weight_decay, amsgrad=opt.amsgrad)
-        #self.nete_optim = torch.optim.Adam(self.nete.parameters(), lr=opt.lr, betas=opt.betas, eps=opt.eps, weight_decay=opt.weight_decay, amsgrad=opt.amsgrad)
-        
-        self.netg_scheduler = torch.optim.lr_scheduler.StepLR(self.netg_optim, step_size=opt.lr_step_size, gamma=opt.lr_gamma)
-        self.netd_scheduler = torch.optim.lr_scheduler.StepLR(self.netd_optim, step_size=opt.lr_step_size, gamma=opt.lr_gamma)
-        #self.nete_scheduler = torch.optim.lr_scheduler.StepLR(self.nete_optim, step_size=opt.lr_step_size, gamma=opt.lr_gamma)
-        
-        if load_params is not None:
-            self.netg.load_state_dict(load_params['netg'])
-            self.netd.load_state_dict(load_params['netd'])
-            #self.nete.load_state_dict(load_params['nete'])
-            
-            self.netg_optim.load_state_dict(load_params['optim']['netg_optim'])
-            self.netd_optim.load_state_dict(load_params['optim']['netd_optim'])
-            #self.nete_optim.load_state_dict(load_params['optim']['nete_optim'])
-            
-            self.netg_scheduler.load_state_dict(load_params['optim']['netg_scheduler'])
-            self.netd_scheduler.load_state_dict(load_params['optim']['netd_scheduler'])
-            #self.nete_scheduler.load_state_dict(load_params['optim']['nete_scheduler'])
-        else:
-            self.netg.apply(weights_init)
-            self.netd.apply(weights_init)
-            #self.nete.apply(weights_init)
-        
-
-    def checkpoint(self, number=None, metrics=None, save_optimizers=True, basename=None, directory=None):
-        if number is None:
-            number = ''
-        else:
-            number = '_'+str(number)
-
-        if basename is None:
-            basename = self.opt.basename
-        
-        if directory is None:
-            directory = self.opt.modeldir
-            
-        if save_optimizers:
-            optimizers = {
-                        'netg_optim':self.netg_optim.state_dict(),
-                        'netd_optim':self.netd_optim.state_dict(),
-                        #'nete_optim':self.nete_optim.state_dict(), 
-                        
-                        'netg_scheduler':self.netg_scheduler.state_dict(),
-                        'netd_scheduler':self.netd_scheduler.state_dict(),
-                        #'nete_scheduler':self.nete_scheduler.state_dict()
-                    }
-        else:
-            optimizers = None
-            
-        fullpath = os.path.join(directory, basename+number+'.pth')
-        data = {
-                'opt':self.opt,
-                'netg':self.netg.state_dict(),
-                'netd':self.netd.state_dict(),
-                #'nete':self.nete.state_dict(),
-                'optim':optimizers,
-                'metrics':metrics
-                }
-        
-        if not os.path.isdir(directory):
-            os.makedirs(directory)
-        
-        torch.save(data, fullpath)
 
 
 
-class BiGAN_Model(Model):
-    def __init__(self, opt, load_params=None):
-        self.opt = opt
-        
-        self.netg = NetG32(opt).to(opt.device)
-        self.netd = NetD32_bigan(opt).to(opt.device)
-        self.nete = NetE32(opt).to(opt.device)      
-
-        
-        self.netg_optim = torch.optim.Adam(self.netg.parameters(), lr=opt.lr, betas=opt.betas, eps=opt.eps, weight_decay=opt.weight_decay, amsgrad=opt.amsgrad)
-        self.netd_optim = torch.optim.Adam(self.netd.parameters(), lr=opt.lr, betas=opt.betas, eps=opt.eps, weight_decay=opt.weight_decay, amsgrad=opt.amsgrad)
-        self.nete_optim = torch.optim.Adam(self.nete.parameters(), lr=opt.lr, betas=opt.betas, eps=opt.eps, weight_decay=opt.weight_decay, amsgrad=opt.amsgrad)
-        
-        self.netg_scheduler = torch.optim.lr_scheduler.StepLR(self.netg_optim, step_size=opt.lr_step_size, gamma=opt.lr_gamma)
-        self.netd_scheduler = torch.optim.lr_scheduler.StepLR(self.netd_optim, step_size=opt.lr_step_size, gamma=opt.lr_gamma)
-        self.nete_scheduler = torch.optim.lr_scheduler.StepLR(self.nete_optim, step_size=opt.lr_step_size, gamma=opt.lr_gamma)
-        
-        if load_params is not None:
-            self.netg.load_state_dict(load_params['netg'])
-            self.netd.load_state_dict(load_params['netd'])
-            self.nete.load_state_dict(load_params['nete'])
-            
-            self.netg_optim.load_state_dict(load_params['optim']['netg_optim'])
-            self.netd_optim.load_state_dict(load_params['optim']['netd_optim'])
-            self.nete_optim.load_state_dict(load_params['optim']['nete_optim'])
-            
-            self.netg_scheduler.load_state_dict(load_params['optim']['netg_scheduler'])
-            self.netd_scheduler.load_state_dict(load_params['optim']['netd_scheduler'])
-            self.nete_scheduler.load_state_dict(load_params['optim']['nete_scheduler'])
-        else:
-            self.netg.apply(weights_init)
-            self.netd.apply(weights_init)
-            self.nete.apply(weights_init)
-            
-            
-            
-        
-
-    def checkpoint(self, number=None, metrics=None, save_optimizers=True, basename=None, directory=None):
-        if number is None:
-            number = ''
-        else:
-            number = '_'+str(number)
-
-        if basename is None:
-            basename = self.opt.basename
-        
-        if directory is None:
-            directory = self.opt.modeldir
-            
-        if save_optimizers:
-            optimizers = {
-                        'netg_optim':self.netg_optim.state_dict(),
-                        'netd_optim':self.netd_optim.state_dict(),
-                        'nete_optim':self.nete_optim.state_dict(), 
-                        
-                        'netg_scheduler':self.netg_scheduler.state_dict(),
-                        'netd_scheduler':self.netd_scheduler.state_dict(),
-                        'nete_scheduler':self.nete_scheduler.state_dict()
-                    }
-        else:
-            optimizers = None
-            
-        fullpath = os.path.join(directory, basename+number+'.pth')
-        data = {
-                'opt':self.opt,
-                'netg':self.netg.state_dict(),
-                'netd':self.netd.state_dict(),
-                'nete':self.nete.state_dict(),
-                'optim':optimizers,
-                'metrics':metrics
-                }
-        
-        if not os.path.isdir(directory):
-            os.makedirs(directory)
-        
-        torch.save(data, fullpath)
-        
-
-
-#def load_bigan_model(self, directory, basename, number):
-#    if number is None:
-#        number = ''
-#    else:
-#        number = '_'+str(number)
-#    fullpath = os.path.join(directory, basename+number+'.pth')
-#    
-#    params = torch.load(fullpath)
-#    
-#    model = BiGAN_Model(params['opt'])
-#    model.netg.load_state_dict()
-        
-
-### Testing
-
-
-
-### Command line
-if __name__=='__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--test', type=str, default=None, help='Name of test to run')
-    
-    
-    
-    
-    
-    opt = parser.parse_args()

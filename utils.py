@@ -13,6 +13,23 @@ import copy
 import torch
 
 
+class StateDictWrapper:
+    def __init__(self, state_dict):
+        self.state_dict = state_dict
+
+    def __len__(self):
+        return len(self.state_dict)
+
+    def __getitem__(self, item):
+        return self.state_dict[item]
+
+    def keys(self):
+        return self.state_dict.keys()
+
+    def __iter__(self):
+        return iter(self.state_dict)
+
+
 # Deprecated; now favor calling ast.literal_eval once on s where s is formatted like a python object
 def parse_string(s):
     s_no_spaces = ''.join(s.split())
@@ -36,14 +53,16 @@ def parse_string(s):
     return string_dict
 
 
-def dict_to_neat_string(d, level=0, max_prepend_level=4):
+def dict_to_neat_string(d, level=0, max_prepend_level=4, ignore_underscored_keys=False):
     prepend = '  '*min(level, max_prepend_level)
     print_str = prepend+'{\n'
     for key in d:
+        if ignore_underscored_keys and key.startswith('_'):
+            continue
         item = d[key]
         print_str += prepend + str(key) + ':'
         if isinstance(item, EasyDict) or isinstance(item, dict):
-            print_str += '\n' + dict_to_neat_string(item, level=level+1, max_prepend_level=max_prepend_level)
+            print_str += '\n' + dict_to_neat_string(item, level=level+1, max_prepend_level=max_prepend_level, ignore_underscored_keys=ignore_underscored_keys)
         else:
             print_str += str(item) + '\n'
     print_str += prepend+'}\n'
@@ -150,6 +169,13 @@ class EasyDict:
                 item = item[key]
         item[path[-1]] = value
 
+    def recursive_update(self, mapping):
+        if not isinstance(mapping, EasyDict):
+            mapping = EasyDict(dictionary=mapping)
+        mapping_walk = mapping.walk(return_dict=True)
+        for key in mapping_walk:
+            self.set_path(key, mapping_walk[key])
+
 
 # Is this class even a good idea? Maybe
 class DataDict(EasyDict):
@@ -216,6 +242,20 @@ def collate_dicts(dict_list, dict_type = EasyDict, cast_func = None, ignore_unde
             
     return dict_from_paths(collated, dict_type=dict_type)
 
+
+
+
+def make_directories(base_dirs, base_model_name=None):
+    for d in base_dirs:
+        if d is None:
+            continue
+        if not os.path.isdir(d):
+            os.makedirs(d)
+        if base_model_name is None:
+            continue
+        subdir = os.path.join(d, base_model_name)
+        if not os.path.isdir(subdir):
+            os.makedirs(subdir)
 
 
 
