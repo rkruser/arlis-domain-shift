@@ -32,6 +32,7 @@ They can then be invoked via
 python main.py --basename [current basename] --mode [mode to run] --parameter_key [name of parameter set to load]
 
 
+### Extending Project
 
 The project can be extended as follows:
 - You can add a new type of neural network model by adding an entry to load_torch_class in models.py that constructs the class (the network itself can be in any file as long as you import it into models)
@@ -43,14 +44,14 @@ The primary data structure for tracking options and model structure is the EasyD
 
 
 
-Command examples:
+### Command examples:
 
 python main.py --help  :  Show command line options
 python main.py --mode train\_gan --show_options  : Print a nested dictionary of all available options that could be fed into --parameters
 
 
 
-Full training flow:
+### Full training flow:
 
 Train a GAN of class (netg32, netd32) on 'mnist':
 Command: python main.py --basename test1 --mode train_gan --parameters "{'generator_opts':{'classname':'netg32'}, 'discriminator_opts':{'classname':'netd32'}, 'training_opts':{'batch_size':128, 'n_epochs':50,'print_every':200}, 'dataset_opts':{'dataset':'mnist'}}"
@@ -91,7 +92,7 @@ Produces: datasets/generated_datasets/test1/regressor_output.pth
 
 
 
-Files in this project:
+### Files in this project:
 
 main.py : The main function that reads command line arguments and initiates all procedures
 models.py : The actual neural network models
@@ -102,3 +103,11 @@ config.py : Default parameters
 utils.py : Basic objects and functions used throughout
 train.py : actually perform training
 datasets.py : Load datasets
+
+
+### Requirements
+
+The required libraries are in requirements.txt.  To install, do:
+
+`python -m pip install -r requirements.txt`
+
