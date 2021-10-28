@@ -70,6 +70,7 @@ training_opts = edict (
                         n_iters = 1e20, #Set very high because epochs matter more
                         checkpoint_every = 10,
                         print_every = 100,
+                        print_batch_eta=True,
                         always_average_printouts = False,
                         use_tensorboard_per_iteration = False,
                         use_logfile = False, #?

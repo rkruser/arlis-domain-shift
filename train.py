@@ -62,8 +62,10 @@ def train(model, train_loader, train_opts, val_loader=None, tracker=None, run_op
     dataiter = iter(train_loader)
 
 #    time1 = time.time()
-    timer = utils.Clock(total_ticks = train_opts.n_epochs)
-    timer.start()
+    epoch_timer = utils.Clock(total_ticks = train_opts.n_epochs)
+    batch_timer = utils.Clock(total_ticks = (train_opts.n_epochs * len(train_loader)) // train_opts.print_every)
+    epoch_timer.start()
+    batch_timer.start()
     while iternum < train_opts.n_iters and not model.functions.stop(model):
         batch = next(dataiter, None)
         if batch is None:
@@ -80,11 +82,11 @@ def train(model, train_loader, train_opts, val_loader=None, tracker=None, run_op
                     tracker.snapshot(key, epoch, shot.item, tensorboard_type=shot.dtype)
 
 #            time2 = time.time()
-            timer.tick()
+            epoch_timer.tick()
             epoch += 1
-            tracker.update_epoch(epoch=epoch, print_averages=True, time=timer.last_tick_time(), print_time=True)
+            tracker.update_epoch(epoch=epoch, print_averages=True, time=epoch_timer.last_tick_time(), print_time=True)
 #            time1 = time2
-            remaining_seconds = timer.remaining_seconds()
+            remaining_seconds = epoch_timer.remaining_seconds()
             print("ETA: {0:8.2f} minutes / {1:8.2f} hours".format(remaining_seconds/60, remaining_seconds/3600))
 
             if (epoch+1) % train_opts.checkpoint_every == 0:
@@ -102,7 +104,11 @@ def train(model, train_loader, train_opts, val_loader=None, tracker=None, run_op
         tracker.update_meters_from_easydict(metrics, batch.data_size(), iternum, pre_averaged=model.info.loss_is_averaged, tensorboard_log_iteration=train_opts.use_tensorboard_per_iteration)
 
         if iternum % train_opts.print_every == 0:
+            batch_timer.tick()
+            remaining_seconds = batch_timer.remaining_seconds()
             tracker.print_current(*train_opts.print_keys, iteration_header=True, average_last_epoch=train_opts.always_average_printouts)
+            if train_opts.print_batch_eta:
+                print("eta: {0:8.2f} minutes".format(remaining_seconds/60))
 
         iternum += 1
 
