@@ -3,3 +3,9 @@ torch==1.10.0
 torchvision==0.11.1
 matplotlib==3.4.3
 tensorboard==2.7.0
+
+# For StyleGAN3
+scipy==1.7.1
+click>=8.0
+pillow==8.4.0
+
