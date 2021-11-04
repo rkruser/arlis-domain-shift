@@ -81,7 +81,7 @@ Uses: latent_dataset.pth, jacobian_dataset.pth
 Produces: models/test1/{regressor.pth, regressor_train_metrics.pth}
 
 Apply the regressor to a new dataset and save the results
-Command: python main.py --basename test1 --mode apply_regressor --parameters "{'dataset_opts':{'dataset':'mnist'}}"
+Command: `python main.py --basename test1 --mode apply_regressor --parameters "{'dataset_opts':{'dataset':'mnist'}}"`
 Uses: regressor.pth
 Produces: datasets/generated_datasets/test1/regressor_output.pth
 

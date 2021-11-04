@@ -155,7 +155,7 @@ Class-specific options
 """
 
 class_default_opts_dict = {
-    'adam':edict(lr=0.0002, betas=(0.9,0.999), weight_decay=0),
+    'adam':edict(lr=0.0002, betas=(0.5,0.999), weight_decay=0), # 0.5 as b1 is preferred
     'steplr':edict(step_size=1, gamma=0.1),
     'netg32':edict(latent_dimension = 100, output_dimension=(3,32,32), hidden_dimension_base=64),
     'netd32':edict(input_dimension=(3,32,32), hidden_dimension_base=64),

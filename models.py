@@ -17,7 +17,7 @@ import torch.nn as nn
 
 import os
 
-from stylegan3.stylegan3_ffhqu import get_stylegan_ffhqu
+#from stylegan3.stylegan3_ffhqu import get_stylegan_ffhqu
 from utils import EasyDict as edict
 
 ### Generator DCGAN
@@ -329,9 +329,9 @@ def load_torch_class(classname, *args, **kwargs):
         return torch.nn.Linear(64,2)
     elif classname == 'testc':
         return torch.nn.Linear(64,1)
-    elif classname == 'stylegan3-ffhqu':
-        opt = edict()
-        return get_stylegan_ffhqu(opt)
+#    elif classname == 'stylegan3-ffhqu':
+#        opt = edict()
+#        return get_stylegan_ffhqu(opt)
 
     
 

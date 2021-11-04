@@ -73,10 +73,13 @@ def calc_gradient_penalty(discriminator_net, real_data, fake_data, gp_lambda):
 
 def discriminator_wgan_loss(fake_output, real_output, discriminator, fake_data, real_data, gp_lambda):
     gradient_penalty = calc_gradient_penalty(discriminator, real_data, fake_data, gp_lambda)
-    return fake_output.mean() - real_output.mean() + gradient_penalty
+    fake_output_loss = torch.nn.functional.softplus(fake_output).mean()
+    real_output_loss = torch.nn.functional.softplus(-real_output).mean()
+    return fake_output_loss + real_output_loss + gradient_penalty
 
 def generator_wgan_loss(fake_discriminator_output):
-    return (-1)*fake_discriminator_output.mean()   
+    fake_output_loss = torch.nn.functional.softplus(-fake_discriminator_output).mean()
+    return fake_output_loss
 
 
 def discriminator_regular_loss(fake_output, real_output):
@@ -223,6 +226,16 @@ class Wasserstein_GAN_Update(GAN_Update_Base):
         real_batch = batch.image.to(self.device)
         batch_size = len(real_batch)
 
+
+        # inspired by style-ada
+        p1 = torch.rand(())
+        if p1 < 0.7:
+            p2 = 0.2*torch.rand(())
+            additive_noise = p2*torch.randn(real_batch.size(),device=self.device)
+            real_batch = real_batch + additive_noise
+            real_batch = (real_batch-real_batch.min())/real_batch.max()
+            real_batch = 2*real_batch-1
+
         discriminator_on_real = self.discriminator(real_batch)
         fake_ims, _ = self.sample(model, n_samples=batch_size)
         fake_ims = fake_ims.detach()
@@ -297,6 +310,7 @@ class Regular_GAN_Update(GAN_Update_Base):
         discriminator_loss_value = discriminator_loss.item()
         
         # Update generator if indicated
+        generator_loss_value = None
         if (self.state.itercounter+1) == self.critic_iters:
             generator_loss_value = 0.0
             for i in range(self.gen_iters):
@@ -316,7 +330,10 @@ class Regular_GAN_Update(GAN_Update_Base):
         self.state.itercounter = (self.state.itercounter+1) % self.critic_iters
 
         # Collect metrics
-        metric_dict = {'train/discriminator_loss': discriminator_loss_value, 'train/generator_loss' : generator_loss_value}
+        metric_dict = {'train/discriminator_loss': discriminator_loss_value}
+        
+        if generator_loss_value is not None: 
+            metric_dict['train/generator_loss'] = generator_loss_value
 
         return utils.dict_from_paths(metric_dict)
        
