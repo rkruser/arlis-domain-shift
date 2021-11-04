@@ -17,7 +17,7 @@ import torch.nn as nn
 
 import os
 
-#from stylegan3.stylegan3_ffhqu import get_stylegan_ffhqu
+from stylegan3.stylegan3_ffhqu import get_stylegan_ffhqu
 from utils import EasyDict as edict
 
 ### Generator DCGAN
