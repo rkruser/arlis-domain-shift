@@ -162,7 +162,7 @@ class_default_opts_dict = {
     'netr32':edict(input_dimension=(3,32,32), hidden_dimension_base=64, output_dimension=2),
     'netc32':edict(input_dimension=(3,32,32), hidden_dimension_base=64, feature_dimension=128, output_dimension=1),
     'testg':edict(latent_dimension=8),
-    'stylegan2-ada-cifar10':edict(name='pretrained_stylegan', opts={}, pickled=True),
+    'stylegan2-ada-cifar10':edict(name='pretrained_stylegan', opts={}, pickled=True, class_condition=torch.arange(10)),
 }
 
 def class_opts(classname):

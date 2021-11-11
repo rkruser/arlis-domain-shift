@@ -176,6 +176,33 @@ class GAN_Sample(Model_Function_Base):
     
         return outputs, inputs
 
+
+class StyleGAN_Sample(Model_Function_Base):
+    def __init__(self, model):
+        self.latent_dimension = 512
+        self.w_dimension = 512
+        self.device = model.info.opts.device
+        self.stylegan_generator = model.components.generator.network.object_
+        self.class_condition = model.info.opts.load_generator_external_opts.class_condition
+
+    def __call__(self, model, n_samples=64, inputs=None, w_values=None):
+        if w_values is None:
+            if inputs is None:
+                inputs = [None, None]
+                inputs[0] = torch.randn(n_samples, self.latent_dimension, device=self.device)
+                if self.class_condition is not None:
+                    inds = torch.randint(len(self.class_condition), (n_samples,))
+                    class_inds = torch.zeros(n_samples,len(self.class_condition))
+                    class_inds[torch.arange(n_samples),inds] = 1
+                    inputs[1] = class_inds
+                
+            w_values = self.stylegan_generator.mapping(inputs[0], inputs[1])
+                
+        image_outputs = self.stylegan_generator.synthesis(w_values, noise_mode='const', force_fp32=True)
+    
+        return image_outputs, w_values, inputs
+
+
 class GAN_Update_Base(Model_Function_Base):
     def __init__(self, model, sample_func=None):
         name_obj_mapping = map_subcomponent_names_to_objects(model.components)
