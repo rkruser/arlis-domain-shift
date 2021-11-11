@@ -119,6 +119,7 @@ class SavedTensorDataset(torch.utils.data.Dataset):
         for key in self.data:
             if not key.startswith('_'):
                 self.data[key] = self.data[key].to(torch.float32) #weirdly necessary
+               
 
     def __len__(self):
         return self.data.data_size()
@@ -197,3 +198,21 @@ def get_dataset(dataset='mnist', dataset_folder='/scratch0/datasets', train=True
 
 def get_generated_dataset(dataset_file, dataset_folder):
     return SavedTensorDataset(os.path.join(dataset_folder,dataset_file))
+
+
+def normalize_dataset(data): #how does this interact with memory?
+    for key in data:
+        if key in ['logprobs', 'reconstruction_losses']:
+            t = data[key]
+            mean = t.mean()
+            std = t.std()
+            data[key] = (t-mean)/std
+            data['_'+key+'_mean'] = mean
+            data['_'+key+'_std'] = std
+
+    return data
+
+
+
+
+

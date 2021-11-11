@@ -88,6 +88,7 @@ def invert_dataset(opts):
     dataloader = torch.utils.data.DataLoader(dataset, batch_size = opts.training_opts.batch_size, shuffle=opts.training_opts.shuffle, drop_last=opts.training_opts.drop_last, collate_fn = collate_functions[opts.training_opts.collate_fn], pin_memory=opts.training_opts.pin_memory)
 
     latent_dataset = train.invert_generator(model, dataloader, opts)  # includes codes and reconstruction losses
+    latent_dataset = datasets.normalize_dataset(latent_dataset) #normalize scalar components
 
     cur_generated_dataset_folder = os.path.join(opts.generated_dataset_folder, opts.basename)
     utils.make_directories([cur_generated_dataset_folder])
@@ -97,12 +98,20 @@ def invert_dataset(opts):
 Handle Jacobian calculations
 """
 def calculate_jacobians(opts):
-    cur_generated_dataset_folder = os.path.join(opts.generated_dataset_folder, opts.basename)
+
+    if opts.stylegan_w_jacobians:
+        dataset = datasets.RandomDataset(length=50000, point_size=512, nlabels=10)
+        output_name = 'w_jacobian_dataset.pth'
+    else:
+        cur_generated_dataset_folder = os.path.join(opts.generated_dataset_folder, opts.basename)
+        dataset = datasets.get_generated_dataset('latent_dataset.pth', cur_generated_dataset_folder)
+        output_name = 'jacobian_dataset.pth'
+
     model = build_models.build_generator_model(opts) #Perhaps generator only model
-    dataset = datasets.get_generated_dataset('latent_dataset.pth', cur_generated_dataset_folder)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size = opts.training_opts.batch_size, shuffle=opts.training_opts.shuffle, drop_last=opts.training_opts.drop_last, collate_fn = collate_functions[opts.training_opts.collate_fn], pin_memory=opts.training_opts.pin_memory)
     jacobian_dataset = train.calculate_jacobians(model, dataloader, opt)
-    torch.save(jacobian_dataset, os.path.join(cur_generated_dataset_folder, 'jacobian_dataset.pth')) #includes only log jacobian
+    jacobian_dataset = datasets.normalize_dataset(jacobian_dataset) #normalize scalar components
+    torch.save(jacobian_dataset, os.path.join(cur_generated_dataset_folder, output_name)) #includes only log jacobian
 
 
 """
@@ -112,12 +121,21 @@ def train_regressor(opts):
     cur_generated_dataset_folder = os.path.join(opts.generated_dataset_folder, opts.basename)
 
     model = build_models.build_regressor_model(opts)
-    regular_dataset = datasets.get_dataset(dataset=opts.dataset_opts.dataset, dataset_folder=opts.dataset_opts.dataset_folder)
-    # also load latent_dataset.pth and jacobian_dataset.pth and stitch them together
-    latent_dataset = datasets.get_generated_dataset('latent_dataset.pth', cur_generated_dataset_folder)
-    jacobian_dataset = datasets.get_generated_dataset('jacobian_dataset.pth', cur_generated_dataset_folder)
-     
-    dataset = datasets.ConcatDatasets(regular_dataset, latent_dataset, jacobian_dataset) 
+
+    if opts.train_w_regressor:
+        dataset = datasets.get_generated_dataset('jacobian_dataset.pth', cur_generated_dataset_folder)
+    elif opts.stylegan_generator:
+        regular_dataset = datasets.get_dataset(dataset=opts.dataset_opts.dataset, dataset_folder=opts.dataset_opts.dataset_folder)
+        latent_dataset = datasets.get_generated_dataset('latent_dataset.pth', cur_generated_dataset_folder)
+        dataset = datasets.ConcatDatasets(regular_dataset, latent_dataset) 
+    else:
+        regular_dataset = datasets.get_dataset(dataset=opts.dataset_opts.dataset, dataset_folder=opts.dataset_opts.dataset_folder)
+        # also load latent_dataset.pth and jacobian_dataset.pth and stitch them together
+        latent_dataset = datasets.get_generated_dataset('latent_dataset.pth', cur_generated_dataset_folder)
+        jacobian_dataset = datasets.get_generated_dataset('jacobian_dataset.pth', cur_generated_dataset_folder)
+        dataset = datasets.ConcatDatasets(regular_dataset, latent_dataset, jacobian_dataset) 
+
+
     dataloader = torch.utils.data.DataLoader(dataset, batch_size = opts.training_opts.batch_size, shuffle=opts.training_opts.shuffle, drop_last=opts.training_opts.drop_last, collate_fn = collate_functions[opts.training_opts.collate_fn], pin_memory=opts.training_opts.pin_memory)
 
     if opts.load_tracker_from is not None:

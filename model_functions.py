@@ -481,6 +481,41 @@ class Regressor_Update(Predictor_Update_Base):
         return outputs, utils.dict_from_paths(metrics)
 
 
+class StyleGAN_Full_Regressor_Update(Predictor_Update_Base):
+    def __init__(self, model):
+        super().__init__(model)
+        if model.info.opts.training:
+            self.scheduler = self.regressor_scheduler
+
+    def __call__(self, model, batch, epoch, iternum):
+        self._step_lr(epoch, iternum)
+
+        outputs, metrics = self.run(self.model, batch)
+
+        self.regressor.zero_grad()
+        outputs.regressor_loss.backward()
+        self.regressor_optim.step()
+            
+        return metrics
+       
+    def run(self, model, batch):
+        image_batch = batch.image.to(self.device)
+        encodings = self.regressor(image_batch)
+        outputs = utils.EasyDict(encodings=encodings)
+        metrics = {}
+
+        logprobs = self.w_regressor(batch.w_codes.to(self.device)).detach() #use w_regressor probs on w_codes
+        labels = torch.cat([logprobs.unsqueeze(1), batch.reconstruction_losses.unsqueeze(1)],dim=1)
+
+        labels = labels.to(self.device)
+        regressor_loss = self.loss_function(encodings, labels)
+        regressor_loss_value = regressor_loss.item()
+        outputs.regressor_loss = regressor_loss
+        metrics['{0}/regressor_loss'.format(model.state.mode)] = regressor_loss_value
+
+        return outputs, utils.dict_from_paths(metrics)
+
+
 
 
 class Classifier_Update(Predictor_Update_Base):
@@ -602,7 +637,7 @@ class Invert_StyleGAN_Generator(Model_Function_Base):
             optim.step()
             iters += 1
 
-        return utils.DataDict(latent_codes = guesses.detach().cpu(), reconstruction_losses=reconstruction_losses.detach().cpu(), _size=batch_size)
+        return utils.DataDict(w_codes = guesses.detach().cpu(), reconstruction_losses=reconstruction_losses.detach().cpu(), _size=batch_size)
 
 
 
@@ -677,11 +712,21 @@ class StyleGAN_Logprobs(Model_Function_Base):
         self.device = model.info.opts.device
 
     def __call__(self, model, batch):
-        z_codes = batch.latent_codes
-        conditioned_classes = batch.conditioned_classes # usually None
-        num_classes = batch._num_classes # usually None
+        #z_codes = batch.latent_codes
+        #conditioned_classes = batch.conditioned_classes # usually None
+        z_codes = batch.image.to(self.device) #Name comes from RandomDataset in datasets; should be changed
+
+        if 'label' in batch:
+            conditioned_classes = batch.label.to(self.device)
+            if '_num_classes' in batch:
+                num_classes = batch._num_classes # usually None
+            else:
+                num_classes = 10
+        else:
+            conditioned_classes = None
+            num_classes = None
         
-        z_codes = z_codes.to(self.device)
+#        z_codes = z_codes.to(self.device)
         z_codes.requires_grad_(True)
         w_values = self.generator.mapping(z_codes, conditioned_classes)
         
@@ -690,7 +735,7 @@ class StyleGAN_Logprobs(Model_Function_Base):
         
         logprobs = log_prior_vals + log_jacobian_determinants
 
-        return utils.DataDict(logprobs = logprobs, log_jacobian_determinants = log_jacobian_determinants, log_prior_vals = log_prior_vals, _size = len(z_codes))
+        return utils.DataDict(logprobs = logprobs, log_jacobian_determinants = log_jacobian_determinants, log_prior_vals = log_prior_vals, latent_codes=z_codes.cpu(), latent_labels=conditioned_classes.cpu(), w_values=w_values.cpu(),  _size = len(z_codes))
 
 
 

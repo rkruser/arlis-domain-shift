@@ -295,6 +295,8 @@ def calculate_jacobians_opts(all_opts, parameters, basename):
         load_generator_from = os.path.join(all_opts.model_folder,'generator.pth'),
         invert=False,
         jacobian=True,
+        stylegan_w_jacobians = False,
+#        stylegan_w_classlabels = True
     )
 
     all_opts.update(calculate_jacobians_task_opts)
