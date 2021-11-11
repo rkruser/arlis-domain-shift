@@ -310,7 +310,10 @@ def build_encoder_model(opts):
     model.info.opts = opts
 
     # Set model functions
-    sample_func = model_functions.GAN_Sample(model) #can probably use this unchanged, but check
+    if opts.stylegan_generator:
+        sample_func = model_functions.StyleGAN_Sample(model)
+    else:
+        sample_func = model_functions.GAN_Sample(model) #can probably use this unchanged, but check
 
     model.functions.set_mode = model_functions.Set_Mode(omit=['generator']) 
     model.functions.sample = sample_func
@@ -319,7 +322,10 @@ def build_encoder_model(opts):
     model.functions.stop = model_functions.stop
 
     if ('invert' in opts) and opts.invert:
-        model.functions.invert = model_functions.Invert_Generator(model)
+        if opts.stylegan_generator:
+            model.functions.invert = model_functions.Invert_StyleGAN_Generator(model)
+        else:
+            model.functions.invert = model_functions.Invert_Generator(model)
     else:
         update_func = model_functions.Encoder_Update(model)
         model.functions.run = update_func.run
@@ -334,7 +340,7 @@ def build_generator_model(opts):
 
     # Load generator and associated paramters from file if file is specified
     print("Loading generator from", opts.load_generator_from)
-    model.components.generator = load_standard_component(opts.load_generator_from, network_only=True, device=opts.device)
+    model.components.generator = load_standard_component(opts.load_generator_from, network_only=True, device=opts.device, external_opts = opts.load_generator_external_opts)
     model.components.generator.network.object_.eval() #Always stays eval
 
 
@@ -347,7 +353,10 @@ def build_generator_model(opts):
     model.info.opts = opts
 
     # Set model functions
-    sample_func = model_functions.GAN_Sample(model) #can probably use this unchanged, but check
+    if opts.stylegan_generator:
+        sample_func = model_functions.StyleGAN_Sample(model)
+    else:
+        sample_func = model_functions.GAN_Sample(model) #can probably use this unchanged, but check
 #    update_func = model_functions.Encoder_Update(model)
     model.functions.set_mode = model_functions.Set_Mode(omit=['generator']) 
     model.functions.sample = sample_func
@@ -358,9 +367,15 @@ def build_generator_model(opts):
     model.functions.stop = model_functions.stop
 
     if ('invert' in opts) and opts.invert:
-        model.functions.invert = model_functions.Invert_Generator(model)
+        if opts.stylegan_generator:
+            model.functions.invert = model_functions.Invert_StyleGAN_Generator(model)
+        else:
+            model.functions.invert = model_functions.Invert_Generator(model)
     elif ('jacobian' in opts) and opts.jacobian:
-        model.functions.jacobian = model_functions.Log_Jacobian_Determinant(model)
+        if opts.stylegan_generator:
+            model.functions.jacobian = model_functions.StyleGAN_Logprobs(model)
+        else:
+            model.functions.jacobian = model_functions.Log_Jacobian_Determinant(model)
 
 
     return model
@@ -369,7 +384,18 @@ def build_generator_model(opts):
 
 def build_regressor_model(opts):
     component_names = ['regressor']
+    if opts.load_w_regressor:
+        component_names.append('w_regressor')
+#    elif opts.train_w_regressor:
+#        component_names = ['w_regressor']
+
     model = model_outline(component_names)
+
+
+    if opts.load_w_regressor:
+        print("Loading w-regressor from", opts.w_regressor_path)
+        model.components.w_regressor = load_standard_component(opts.w_regressor_path, network_only=True, device=opts.device)
+
 
     if opts.load_regressor_from is not None:
         # Load regressor and associated paramters from file if file is specified
@@ -391,7 +417,12 @@ def build_regressor_model(opts):
             regressor_optim = None
             regressor_scheduler = None
     
-        model.components.regressor.network.update({'name':'regressor', 
+        if opts.train_w_regressor:
+            regressor_name = 'w_regressor'
+        else:
+            regressor_name = 'regressor'
+
+        model.components.regressor.network.update({'name':regressor_name,
                                                      'classname':opts.regressor_opts.classname,
                                                      'opts':opts.regressor_opts.opts, 
                                                      'object_':regressor})
@@ -406,6 +437,10 @@ def build_regressor_model(opts):
                                                    'classname': opts.regressor_scheduler_opts.classname, 
                                                    'opts':opts.regressor_scheduler_opts.opts, 
                                                    'object_':regressor_scheduler})
+
+
+        
+
 
 
     if opts.max_devices > 1:
@@ -429,6 +464,12 @@ def build_regressor_model(opts):
     model.functions.update = update_func
 
     return model
+
+
+# Implement for final stylegan pipeline; need to load w-regressor
+def build_stylegan_regressor_model(opts):
+    pass
+
 
 
 def build_classifier_model(opts):

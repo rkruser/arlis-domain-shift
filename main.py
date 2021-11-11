@@ -127,6 +127,13 @@ def train_regressor(opts):
     train.train(model, dataloader, opts.training_opts)
 
 
+def train_stylegan_w_regressor(opts):
+    pass
+
+def train_stylegan_full_regressor(opts):
+    pass
+
+
 """
 Handle regressor application
 """

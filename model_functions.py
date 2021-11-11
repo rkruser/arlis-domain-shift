@@ -468,7 +468,10 @@ class Regressor_Update(Predictor_Update_Base):
         metrics = {}
 
         if 'logprobs' in batch:
-            labels = torch.cat([batch.logprobs.unsqueeze(1), batch.reconstruction_losses.unsqueeze(1)],dim=1)
+            if 'reconstruction_losses' in batch:
+                labels = torch.cat([batch.logprobs.unsqueeze(1), batch.reconstruction_losses.unsqueeze(1)],dim=1)
+            else:
+                labels = batch.logprobs
             labels = labels.to(self.device)
             regressor_loss = self.loss_function(encodings, labels)
             regressor_loss_value = regressor_loss.item()
@@ -476,6 +479,8 @@ class Regressor_Update(Predictor_Update_Base):
             metrics['{0}/regressor_loss'.format(model.state.mode)] = regressor_loss_value
 
         return outputs, utils.dict_from_paths(metrics)
+
+
 
 
 class Classifier_Update(Predictor_Update_Base):
@@ -555,6 +560,138 @@ class Invert_Generator(Model_Function_Base):
             iters += 1
 
         return utils.DataDict(latent_codes = guesses.detach().cpu(), reconstruction_losses=reconstruction_losses.detach().cpu(), _size=batch_size)
+
+
+
+class Invert_StyleGAN_Generator(Model_Function_Base):
+    def __init__(self, model):
+        self.generator = model.components.generator.network.object_
+        self.device = model.info.opts.device
+        self.encoder = model.components.encoder.network.object_
+        self.encoder_guidance_lambda = model.info.opts.encoder_guidance_lambda
+        self.lossfunc = get_loss_function('l2')        
+        self.inversion_opts = model.info.opts.inversion_opts
+
+
+    def __call__(self, model, batch):
+        images = batch.image.to(self.device)
+        batch_size = images.size(0)
+
+        initial_guesses = self.encoder(images) #initial guesses
+
+        guesses = initial_guesses.clone().detach()
+        guesses.requires_grad_(True)
+        
+        optim = torch.optim.Adam([guesses], lr=self.inversion_opts.latent_lr, betas=self.inversion_opts.latent_betas)
+        grad_norms = torch.ones(batch_size)
+        iters = 0
+        while grad_norms.max() > 0.001 and iters<100: #This is the wrong approach; need to test z convergence directly
+            fake_ims = self.generator.synthesis(guesses, noise_mode='const', force_fp32=True) # ?
+            reconstruction_losses = ((fake_ims.view(batch_size,-1) - images.view(batch_size, -1))**2).mean(dim=1)
+#            reconstruction_loss = self.lossfunc(fake_ims, images)
+            reconstruction_loss = reconstruction_losses.mean()
+            encoder_guidance_loss = self.lossfunc(guesses,initial_guesses)
+                                    # self.lossfunc(self.encoder(guesses), guesses)
+            
+            loss = reconstruction_loss + self.encoder_guidance_lambda*encoder_guidance_loss
+            
+            if guesses.grad is not None:
+                guesses.grad.fill_(0.0)
+            loss.backward(retain_graph=True)
+            grad_norms = torch.norm(guesses.grad, dim=1)
+            optim.step()
+            iters += 1
+
+        return utils.DataDict(latent_codes = guesses.detach().cpu(), reconstruction_losses=reconstruction_losses.detach().cpu(), _size=batch_size)
+
+
+
+# For each (input, output) pair, compute the jacobian matrix and its negative log determinant
+# For this to work, inputs.requires_grad_ must have been True upon running the computation
+def jacobian(inputs, outputs, return_jacobian=False):
+    num_points = inputs.size(0)
+    output_size = outputs.numel() // num_points
+    input_size = z_codes.numel() // num_points
+    
+    outputs = outputs.view(num_points, output_size)
+    
+    #print("Starting gradients")
+    gradients = [torch.autograd.grad(outputs=outputs[:,k], inputs=inputs,
+                          grad_outputs=torch.ones(num_points, device=inputs.device),
+                          create_graph=True, retain_graph=True, only_inputs=True)[0] for k in range(output_size)]
+    #print("End gradients")
+    
+    gradients = torch.cat(gradients,dim=1)#.detach()
+    gradients = gradients.reshape(num_points, output_size, input_size)
+    
+    gradients = gradients.detach().cpu().numpy()
+    
+    # QR decomp for jacobians
+    log_jacobian_determinants = torch.zeros(num_points) #use torch or numpy here?
+    #print("Starting QR")
+    for k in range(num_points):
+        R = np.linalg.qr(gradients[k], mode='r')
+        jacobian_score = -np.log(np.abs(R.diagonal())).sum() #negative because inverting the diagonal elements
+        log_jacobian_determinants[k] = jacobian_score
+
+    if return_jacobian:
+        return log_jacobian_determinants, gradients
+    else:
+        return log_jacobian_determinants    
+
+
+# Return the log priors for a set of inputs
+# log_base is which log to use; if None, use natural log
+# Classes are labels conditioned on by the generator. If None, no class conditioning is assumed.
+# If classes is not None, then num_classes must also not be none, and random sampling from class labels is assumed
+def log_priors(inputs, classes=None, num_classes=None, class_weights=None, log_base=None):
+    if log_base is None:
+        log_scale = 1.0
+    else:
+        log_scale = np.log(log_base)
+
+    inputs = inputs.detach().cpu()
+    
+    dim = inputs.numel() // len(inputs)
+    gauss_constant = (-dim/2)*np.log(2*np.pi)
+    log_likelihoods = gauss_constant + (-0.5)*(inputs**2).sum(dim=1)
+
+
+    if classes is not None:
+        assert(num_classes is not None)
+        
+        if class_weights is None:
+            add_const = np.log(1/num_classes)
+            log_likelihoods += add_const
+                
+        else:
+            class_weight_values = class_weights[classes]
+            log_likelihoods += torch.log(class_weight_values)
+
+    return log_likelihoods / log_scale
+
+
+class StyleGAN_Logprobs(Model_Function_Base):
+    def __init__(self, model):
+        self.generator = model.components.generator.network.object_
+        self.device = model.info.opts.device
+
+    def __call__(self, model, batch):
+        z_codes = batch.latent_codes
+        conditioned_classes = batch.conditioned_classes # usually None
+        num_classes = batch._num_classes # usually None
+        
+        z_codes = z_codes.to(self.device)
+        z_codes.requires_grad_(True)
+        w_values = self.generator.mapping(z_codes, conditioned_classes)
+        
+        log_jacobian_determinants = jacobian(z_codes, w_values)
+        log_prior_vals = log_priors(z_codes, classes=conditioned_classes, num_classes=num_classes)
+        
+        logprobs = log_prior_vals + log_jacobian_determinants
+
+        return utils.DataDict(logprobs = logprobs, log_jacobian_determinants = log_jacobian_determinants, log_prior_vals = log_prior_vals, _size = len(z_codes))
+
 
 
 class Log_Jacobian_Determinant(Model_Function_Base):

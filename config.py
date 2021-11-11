@@ -113,7 +113,7 @@ dataset_opts = edict(
 
 global_model_opts = edict(
     append_iteration = False,
-    stylegan_mode = False,
+    stylegan_generator = False,
 )
 
 global_network_opts = edict(
@@ -321,7 +321,11 @@ def train_regressor_opts(all_opts, parameters, basename):
         load_regressor_from = None,
         lr_schedule = [],
         loss_function = 'l2',
+        train_w_regressor = False,
+        load_w_regressor = False,
+        w_regressor_path = os.path.join(all_opts.model_folder, 'w_regressor.pth'),
     )
+    
 
     all_opts.training = True
 
