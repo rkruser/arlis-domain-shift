@@ -9,6 +9,7 @@ Image models for small datasets
 
 ### Imports
 import argparse
+import pickle
 
 
 import torch
@@ -329,9 +330,14 @@ def load_torch_class(classname, *args, **kwargs):
         return torch.nn.Linear(64,2)
     elif classname == 'testc':
         return torch.nn.Linear(64,1)
-#    elif classname == 'stylegan3-ffhqu':
-#        opt = edict()
-#        return get_stylegan_ffhqu(opt)
+    elif classname == 'stylegan3-ffhqu':
+        opt = edict()
+        return get_stylegan_ffhqu(opt)
+
+    elif classname == 'stylegan2-ada-cifar10':
+        print("Opening pretrained stylegan2")
+        with open(kwargs['filename'], 'rb') as f:
+            return pickle.load(f)['G_ema']
 
     
 

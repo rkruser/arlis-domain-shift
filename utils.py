@@ -163,7 +163,7 @@ class EasyDict:
         path = path.split('/')
         item = self
         for key in path[:-1]:
-            if key in item:
+            if key in item and (item[key] is not None):
                 item = item[key]
             else:
                 item[key] = self.__class__()

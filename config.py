@@ -113,8 +113,7 @@ dataset_opts = edict(
 
 global_model_opts = edict(
     append_iteration = False,
-    
-
+    stylegan_mode = False,
 )
 
 global_network_opts = edict(
@@ -163,6 +162,7 @@ class_default_opts_dict = {
     'netr32':edict(input_dimension=(3,32,32), hidden_dimension_base=64, output_dimension=2),
     'netc32':edict(input_dimension=(3,32,32), hidden_dimension_base=64, feature_dimension=128, output_dimension=1),
     'testg':edict(latent_dimension=8),
+    'stylegan2-ada-cifar10':edict(name='pretrained_stylegan', opts={}, pickled=True),
 }
 
 def class_opts(classname):
@@ -240,6 +240,7 @@ def train_encoder_opts(all_opts, parameters, basename):
     train_encoder_task_opts = edict(
         load_encoder_from = None,
         load_generator_from = os.path.join(all_opts.model_folder,'generator.pth'),
+        load_generator_external_opts = None, #if stylegan, need classname, name, opts, pickled=T/F
         lr_schedule = [],
         loss_function = 'l2',
         invert=False,
@@ -252,6 +253,8 @@ def train_encoder_opts(all_opts, parameters, basename):
     all_opts.encoder_optim_opts = encoder_optim_opts
     all_opts.encoder_scheduler_opts = encoder_scheduler_opts
     all_opts.training_opts = training_opts # tailor to encoder
+
+
 
     # Handle parameter dependencies
     all_opts.training_opts.tracking_opts.logdir = os.path.join(all_opts.log_base_folder, basename)
@@ -465,7 +468,10 @@ def collect_options(mode, basename, parameters, parameter_key=None):
     for key in all_opts:
         item = all_opts[key]
         if isinstance(item, edict) and 'classname' in item:
-            item.opts.update(class_opts(item.classname), disjoint_only=True)
+            if 'opts' in item:
+                item.opts.update(class_opts(item.classname), disjoint_only=True)
+            else:
+                item.update(class_opts(item.classname), disjoint_only=True)
 
 
     return all_opts

@@ -24,7 +24,7 @@ def base_object_dict():
 def empty_subcomponent():
     subcomponent_objects = ['network', 'optimizer', 'scheduler']
     subcomponent_object_dict = {attr:copy.deepcopy(base_object_dict()) for attr in subcomponent_objects}
-    return subcomponent_object_dict
+    return utils.EasyDict(**subcomponent_object_dict)
    
 
 def model_outline(component_names):
@@ -82,9 +82,8 @@ def map_state_dict_to_object(cdict, object_):
 
 
 def load_standard_component(filename, network_only=False, device='cpu', external_opts = None):
-    component_dict = torch.load(filename, map_location=device) #map_location here
-    
     if external_opts is None:
+        component_dict = torch.load(filename, map_location=device) #map_location here
         loaded_dict = {}
         network_object = models.load_torch_class(component_dict.network.classname, **component_dict.network.opts)
         network_object.load_state_dict(component_dict.network.state_dict.state_dict)
@@ -104,15 +103,27 @@ def load_standard_component(filename, network_only=False, device='cpu', external
             loaded_dict['scheduler'] = base_object_dict()
     else:
         # network saved from some other program
-        network_object = models.load_torch_class(external_opts.classname, **external_opts.opts)
-        network_object.load_state_dict(component_dict)
+        network_object = models.load_torch_class(external_opts.classname, filename=filename, **external_opts.opts)
+
+        if not external_opts.pickled:
+            component_dict = torch.load(filename, map_location=device) #map_location here
+            network_object.load_state_dict(component_dict)
+
         network_object = network_object.to(device)
+
+
         loaded_dict = empty_subcomponent()
         loaded_dict.network.object_ = network_object
         loaded_dict.network.classname = external_opts.classname
         loaded_dict.network.name = external_opts.name
         loaded_dict.network.opts = external_opts.opts
        
+
+
+
+        loaded_dict['optimizer'] = base_object_dict()
+        loaded_dict['scheduler'] = base_object_dict()
+
 
     return utils.EasyDict(**loaded_dict)
 
@@ -247,7 +258,7 @@ def build_encoder_model(opts):
 
     # Load generator and associated paramters from file if file is specified
     print("Loading generator from", opts.load_generator_from)
-    model.components.generator = load_standard_component(opts.load_generator_from, network_only=True, device=opts.device)
+    model.components.generator = load_standard_component(opts.load_generator_from, network_only=True, device=opts.device, external_opts=opts.load_generator_external_opts)
     model.components.generator.network.object_.eval() #Always stays eval
 
 
