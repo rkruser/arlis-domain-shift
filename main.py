@@ -212,3 +212,14 @@ if __name__ == '__main__':
 
 
 
+
+"""
+Next:
+- Write out all commands for stylegan inversion
+- define w regressor network
+- 
+
+"""
+
+
+
