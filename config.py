@@ -240,7 +240,7 @@ def train_encoder_opts(all_opts, parameters, basename):
     train_encoder_task_opts = edict(
         load_encoder_from = None,
         load_generator_from = os.path.join(all_opts.model_folder,'generator.pth'),
-        load_generator_external_opts = None, #if stylegan, need classname, name, opts, pickled=T/F
+        load_generator_external_opts = None, #if stylegan, need classname, name, opts, pickled=T/F # class default opts dict?
         lr_schedule = [],
         loss_function = 'l2',
         invert=False,

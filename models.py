@@ -255,8 +255,16 @@ class NetC32(nn.Module):
         return prediction
 
 
+class W_regressor(nn.Module):
+    def __init__(self, opt):
+        super().__init__()
+        layers = [nn.Sequential(nn.Linear(opt.w_size, opt.ndf), nn.LeakyReLU(0.2, inplace=True))]
+        layers += [ nn.Sequential(nn.Linear(opt.ndf,opt.ndf), nn.LeakyReLU(0.2, inplace=True)) for _ in range(opt.num_inner_layers) ]
+        layers += [ nn.Sequential(nn.Linear(opt.ndf,opt.num_out)) ]
+        self.main = nn.Sequential(*layers)
 
-
+    def forward(self, data):
+        return self.main(data)
 
 
 

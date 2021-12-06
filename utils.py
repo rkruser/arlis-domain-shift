@@ -311,7 +311,6 @@ def make_directories(base_dirs, base_model_name=None):
 
 
 
-def normalize_latent_dataset(latent_dataset):
     
 
 

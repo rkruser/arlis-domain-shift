@@ -37,6 +37,16 @@ parser.add_argument('--parameter_key', type=str, default=None, help='If used in 
 
 
 
+"""
+python --basename cifar_stylegan --mode train_encoder --parameters "{'stylegan_generator':True, 'load_generator_from':'', 'load_generator_external_opts':{'classname':'stylegan2-ada-cifar10', 'name':'cifar_pretrained_stylegan', 'opts':None, 'pickled'=True}}"
+python --basename cifar_stylegan --mode invert_dataset --parameters "{}"
+python --basename cifar_stylegan --mode calculate_jacobians --parameters "{}"
+python --basename cifar_stylegan --mode train_regressor --parameters "{}" #w_regressor training
+python --basename cifar_stylegan --mode train_regressor --parameters "{}" #full regressor training
+
+"""
+
+
 
 """
 Handle GAN training
@@ -98,7 +108,6 @@ def invert_dataset(opts):
 Handle Jacobian calculations
 """
 def calculate_jacobians(opts):
-
     if opts.stylegan_w_jacobians:
         dataset = datasets.RandomDataset(length=50000, point_size=512, nlabels=10)
         output_name = 'w_jacobian_dataset.pth'
@@ -145,6 +154,7 @@ def train_regressor(opts):
     train.train(model, dataloader, opts.training_opts)
 
 
+# don't think these are necessary
 def train_stylegan_w_regressor(opts):
     pass
 
@@ -215,8 +225,8 @@ if __name__ == '__main__':
 
 """
 Next:
-- Write out all commands for stylegan inversion
-- define w regressor network
+- Write out all commands for stylegan inversion (partially done above; need to edit config so stylegan external opts can be easily loaded)
+- define w regressor network (done in models.py)
 - 
 
 """
