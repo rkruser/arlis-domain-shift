@@ -43,12 +43,16 @@ class RandomDataset(torch.utils.data.Dataset):
         return utils.DataDict(image=torch.randn(self.point_size), label=torch.randint(self.nlabels,size=(1,))[0], _size=1)
 
 class GeneratorOutputLoader(torch.utils.data.Dataset):
-    def __init__(self, generator_net, length, batch_size, latent_size, device):
+    def __init__(self, generator_net, length, batch_size, latent_size, device, class_conditioned=False, num_classes=-1, stylegan=False):
         self.generator_net = generator_net
         self.length = length
         self.device = device
         self.latent_size = latent_size
         self.batch_size = batch_size
+
+        self.class_conditioned = class_conditioned
+        self.num_classes = num_classes
+        self.stylegan = stylegan
     
     def __len__(self):
         return self.length
@@ -60,9 +64,35 @@ class GeneratorOutputLoader(torch.utils.data.Dataset):
     def __next__(self):
         if self._itercount < self.length:
             latent = torch.randn(self.batch_size, self.latent_size, device=self.device)
-            outputs = self.generator_net(latent)
+
+            if self.class_conditioned:
+                classes = torch.zeros(self.batch_size, self.num_classes, device=self.device)
+                class_indices = torch.randint(self.num_classes, (self.batch_size,1))
+                classes.scatter_(1,class_indices,1)
+                #for i in range(self.batch_size):
+                #    classes[i,class_indices[i]] = 1
+
+                if self.stylegan:
+                    w = self.generator_net.mapping(latent, classes)
+                    imgs = self.generator_net.synthesis(w, noise_mode='const', force_fp32=True)
+                    databatch = utils.DataDict(w_codes = w, fake_outputs = imgs, latent_codes = latent, class_codes=classes, _size=self.batch_size)
+                else:
+                    outputs = self.generator_net(latent, classes)
+                    utils.DataDict(fake_outputs=outputs, latent_codes=latent, class_codes=classes, _size=self.batch_size)
+            
+            else:
+                if self.stylegan:
+                    w = self.generator_net.mapping(latent, classes)
+                    imgs = self.generator_net.synthesis(w, noise_mode='const', force_fp32=True)
+                    databatch = utils.DataDict(w_codes = w, fake_outputs = imgs, latent_codes = latent, _size=self.batch_size)
+                else:
+                    outputs = self.generator_net(latent)
+                    databatch = utils.DataDict(fake_outputs=outputs, latent_codes=latent, _size=self.batch_size)
+
+                    
+
             self._itercount += 1
-            return utils.DataDict(fake_outputs=outputs, latent_codes=latent, _size=self.batch_size)
+            return databatch
         else:
             raise StopIteration
              
