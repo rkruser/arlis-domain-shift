@@ -21,7 +21,7 @@ python main.py --basename cifar_stylegan --mode train_regressor --parameters "{'
 
 
 # Train full regressor
-python main.py --basename cifar_stylegan --mode train_regressor --parameters "{'load_w_regressor':True, 'train_w_regressor':False, 'regressor_opts':{'classname':'netr32', 'opts'={'hidden_dimension_base':256, 'output_dimension':2}}, 'training_opts':{'n_epochs':1, 'print_every':10}}" #full regressor training
+python main.py --basename cifar_stylegan --mode train_regressor --parameters "{'stylegan_generator':True, 'load_w_regressor':True, 'train_w_regressor':False, 'dataset_opts':{'dataset':'cifar10'}, 'regressor_opts':{'classname':'netr32', 'opts':{'hidden_dimension_base':256, 'output_dimension':2}}, 'training_opts':{'n_epochs':1, 'print_every':10, 'batch_size':32}}"
  
 
 

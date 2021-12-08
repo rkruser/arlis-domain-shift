@@ -522,6 +522,47 @@ class Regressor_Update(Predictor_Update_Base):
 
         return outputs, utils.dict_from_paths(metrics)
 
+class Paired_Regressor_Update(Predictor_Update_Base):
+    def __init__(self, model):
+        super().__init__(model)
+        if model.info.opts.training:
+            self.scheduler = self.regressor_scheduler
+
+        if 'regressor' not in self.__dict__:
+            self.regressor = self.w_regressor
+
+    def __call__(self, model, batch, epoch, iternum):
+        self._step_lr(epoch, iternum)
+
+        outputs, metrics = self.run(self.model, batch)
+
+        self.regressor.zero_grad()
+        outputs.regressor_loss.backward()
+        self.regressor_optim.step()
+            
+        return metrics
+       
+    def run(self, model, batch):
+        if 'image' in batch:
+            data = batch.image.to(self.device)
+        elif 'w_values' in batch:
+            data = batch.w_values.to(self.device)
+        encodings = self.regressor(data).squeeze(1)
+        outputs = utils.EasyDict(encodings=encodings)
+        metrics = {}
+
+        w_values = batch.w_values.to(self.device)
+        reconstruction_losses = batch.reconstruction_losses.to(self.device)
+        predicted_logprobs = self.w_regressor(w_values).squeeze(1).detach()
+        labels = torch.cat([predicted_logprobs.unsqueeze(1), reconstruction_losses.unsqueeze(1)], dim=1)
+        labels = labels.to(self.device)
+        regressor_loss = self.loss_function(encodings, labels)
+        regressor_loss_value = regressor_loss.item()
+        outputs.regressor_loss = regressor_loss
+        metrics['{0}/regressor_loss'.format(model.state.mode)] = regressor_loss_value
+
+        return outputs, utils.dict_from_paths(metrics)
+
 
 
 class StyleGAN_Full_Regressor_Update(Predictor_Update_Base):

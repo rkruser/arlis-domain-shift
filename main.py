@@ -142,7 +142,8 @@ def train_regressor(opts):
     elif opts.stylegan_generator:
         regular_dataset = datasets.get_dataset(dataset=opts.dataset_opts.dataset, dataset_folder=opts.dataset_opts.dataset_folder)
         latent_dataset = datasets.get_generated_dataset('latent_dataset.pth', cur_generated_dataset_folder)
-        dataset = datasets.ConcatDatasets(regular_dataset, latent_dataset) 
+        jacobian_dataset = datasets.get_generated_dataset('w_jacobian_dataset.pth', cur_generated_dataset_folder)
+        dataset = datasets.ConcatDatasets(regular_dataset, latent_dataset, jacobian_dataset) 
     else:
         regular_dataset = datasets.get_dataset(dataset=opts.dataset_opts.dataset, dataset_folder=opts.dataset_opts.dataset_folder)
         # also load latent_dataset.pth and jacobian_dataset.pth and stitch them together

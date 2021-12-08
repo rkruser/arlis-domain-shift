@@ -459,7 +459,14 @@ def build_regressor_model(opts):
 
     # Set model functions
     sample_func = None #model_functions.GAN_Sample(model) #can probably use this unchanged, but check
-    update_func = model_functions.Regressor_Update(model)
+
+
+    if opts.load_w_regressor and not opts.train_w_regressor:
+        update_func = model_functions.Paired_Regressor_Update(model)
+    else:
+        update_func = model_functions.Regressor_Update(model)
+
+
     model.functions.set_mode = model_functions.Set_Mode()
     model.functions.sample = sample_func
     model.functions.snapshot = None
