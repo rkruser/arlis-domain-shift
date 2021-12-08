@@ -235,14 +235,18 @@ def get_generated_dataset(dataset_file, dataset_folder):
 
 
 def normalize_dataset(data): #how does this interact with memory?
+    keys_to_normalize = []
     for key in data:
         if key in ['logprobs', 'reconstruction_losses']:
-            t = data[key]
-            mean = t.mean()
-            std = t.std()
-            data[key] = (t-mean)/std
-            data['_'+key+'_mean'] = mean
-            data['_'+key+'_std'] = std
+            keys_to_normalize.append(key)
+
+    for key in keys_to_normalize:
+        t = data[key]
+        mean = t.mean()
+        std = t.std()
+        data[key] = (t-mean)/std
+        data['_'+key+'_mean'] = mean
+        data['_'+key+'_std'] = std
 
     return data
 

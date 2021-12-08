@@ -7,7 +7,10 @@ import torch
 import numpy as np
 import torchvision
 
-
+####
+import matplotlib.pyplot as plt
+import sys
+###
 
 
 
@@ -649,19 +652,33 @@ class Invert_StyleGAN_Generator(Model_Function_Base):
 
         guesses = initial_guesses.clone().detach()
         guesses.requires_grad_(True)
+
+        ####
+        initial_ims = None
+        ####
         
         optim = torch.optim.Adam([guesses], lr=self.inversion_opts.latent_lr, betas=self.inversion_opts.latent_betas)
         grad_norms = torch.ones(batch_size)
         iters = 0
-        while grad_norms.max() > 0.001 and iters<100: #This is the wrong approach; need to test z convergence directly
-            fake_ims = self.generator.synthesis(guesses, noise_mode='const', force_fp32=True) # ?
+        while grad_norms.max() > 0.001 and iters<self.inversion_opts.inversion_iters: #This is the wrong approach; need to test z convergence directly
+            ####
+            #print("Iter", iters)
+            ###
+            
+            fake_ims = self.generator.synthesis(guesses.unsqueeze(1).repeat_interleave(8,dim=1), noise_mode='const', force_fp32=True)
+            '''
+            if iters == 0:
+                initial_ims = fake_ims.detach().cpu()
+            '''
+            
+
             reconstruction_losses = ((fake_ims.view(batch_size,-1) - images.view(batch_size, -1))**2).mean(dim=1)
 #            reconstruction_loss = self.lossfunc(fake_ims, images)
             reconstruction_loss = reconstruction_losses.mean()
-            encoder_guidance_loss = self.lossfunc(guesses,initial_guesses)
-                                    # self.lossfunc(self.encoder(guesses), guesses)
+#            encoder_guidance_loss = self.lossfunc(guesses,initial_guesses)
+#            encoder_guidance_loss = self.lossfunc(self.encoder(fake_ims.detach()).detach(), guesses)
             
-            loss = reconstruction_loss + self.encoder_guidance_lambda*encoder_guidance_loss
+            loss = reconstruction_loss #+ self.encoder_guidance_lambda*encoder_guidance_loss
             
             if guesses.grad is not None:
                 guesses.grad.fill_(0.0)
@@ -669,6 +686,32 @@ class Invert_StyleGAN_Generator(Model_Function_Base):
             grad_norms = torch.norm(guesses.grad, dim=1)
             optim.step()
             iters += 1
+
+        torch.cuda.empty_cache() # Necessary to not run out of memory
+
+    
+        ###### For debugging ######
+        '''
+        real_grid_ims = torchvision.utils.make_grid(images.detach().cpu(), nrow=8)
+        real_npy_grid = (real_grid_ims.permute(1,2,0)*127.5+128).clamp(0,255).to(torch.uint8).numpy()
+        plt.imshow(real_npy_grid)
+        plt.show()
+
+        fake_grid_ims = torchvision.utils.make_grid(fake_ims.detach().cpu(), nrow=8)
+        fake_npy_grid = (fake_grid_ims.permute(1,2,0)*127.5+128).clamp(0,255).to(torch.uint8).numpy()
+        plt.imshow(fake_npy_grid)
+        plt.show()
+
+        initial_grid_ims = torchvision.utils.make_grid(initial_ims, nrow=8)
+        initial_npy_grid = (initial_grid_ims.permute(1,2,0)*127.5+128).clamp(0,255).to(torch.uint8).numpy()
+        plt.imshow(initial_npy_grid)
+        plt.show()
+
+
+        sys.exit()
+        '''
+        ##########################
+
 
         return utils.DataDict(w_codes = guesses.detach().cpu(), reconstruction_losses=reconstruction_losses.detach().cpu(), _size=batch_size)
 

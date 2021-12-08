@@ -136,13 +136,17 @@ def invert_generator(model, dataloader, run_opts):
     timer = utils.Clock(total_ticks=len(dataloader))
     timer.start()
     for i,batch in enumerate(dataloader):
-        inverted_batch =model.functions.invert(model, batch)
+        inverted_batch = model.functions.invert(model, batch)
         inverted.append(inverted_batch)
 
         timer.tick()
         remaining_seconds = timer.remaining_seconds()
         print("Inverted {0} of {1}, batch time = {2:8.2f}, eta = {3:8.2f} seconds".format(i,len(dataloader), timer.last_tick_time(), remaining_seconds), end='\r')
         
+        # for debugging
+        #if i > 3:
+        #    break        
+
     inverted = collate_functions.tensor_concat(inverted)
 
     return inverted

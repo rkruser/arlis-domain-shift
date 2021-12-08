@@ -2,11 +2,12 @@ Stylegan2 commands
 
 # Encoder training
 # Need to normalize stylegan outputs to (-1,1) or something
+# Looks like they are supposed to already be normalized to (-1,1), except they can go a bit out of bounds
 # Need to set encoder model so that it has the right dimensions to deal with stylegan2
 python main.py --basename cifar_stylegan --mode train_encoder --parameters "{'stylegan_generator':True, 'class_conditioned_generator':True, 'num_conditioned_classes':10, 'load_generator_from':'/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl', 'load_generator_external_opts':{'classname':'stylegan2-ada-cifar10', 'name':'cifar_pretrained_stylegan', 'opts':{}, 'pickled':True}, 'encoder_opts':{'classname':'nete32', 'opts':{'hidden_dimension_base':256,'output_dimension':512}}, 'training_opts':{'n_epochs':1, 'print_every':10}}"
 
 # Inversion of Cifar10
-python main.py --basename cifar_stylegan --mode invert_dataset --parameters "{'dataset_opts':{'dataset':'cifar10'}, 'stylegan_generator':True, 'load_generator_from':'/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl', 'load_generator_external_opts':{'classname':'stylegan2-ada-cifar10', 'name':'cifar_pretrained_stylegan', 'opts':{}, 'pickled':True}}"
+python main.py --basename cifar_stylegan --mode invert_dataset --parameters "{'dataset_opts':{'dataset':'cifar10'}, 'stylegan_generator':True, 'load_generator_from':'/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl', 'load_generator_external_opts':{'classname':'stylegan2-ada-cifar10', 'name':'cifar_pretrained_stylegan', 'opts':{}, 'pickled':True}, 'training_opts':{'batch_size':32}, 'inversion_opts':{'latent_lr':0.01, 'latent_betas':(0.9,0.999), 'inversion_iters':100}}"
 
 
 # Calculate W jacobians

@@ -281,6 +281,7 @@ def invert_dataset_opts(all_opts, parameters, basename):
     inversion_opts = edict(
         latent_lr = 0.001,
         latent_betas = (0.9,0.999),
+        inversion_iters = 100,
     ) 
 
     all_opts.update(invert_dataset_task_opts)
