@@ -17,11 +17,11 @@ python main.py --basename cifar_stylegan --mode calculate_jacobians --parameters
 
 
 # Train W regressor
-python main.py --basename cifar_stylegan --mode train_regressor --parameters "{'load_w_regressor':True, 'train_w_regressor':True, 'regressor_opts':{'classname':'netr_stylegan_wnet'}, 'training_opts':{'n_epochs':1, 'print_every':10}}" #w_regressor training
+python main.py --basename cifar_stylegan --mode train_regressor --parameters "{'load_w_regressor':False, 'train_w_regressor':True, 'regressor_opts':{'classname':'w_regressor'}, 'training_opts':{'n_epochs':1, 'print_every':10}}"
 
 
 # Train full regressor
-python main.py --basename cifar_stylegan --mode train_regressor --parameters "{'load_w_regressor':True, 'train_w_regressor':False, 'regressor_opts':{'classname':'netr32_stylegan_regressor_net'}, 'training_opts':{'n_epochs':1, 'print_every':10}}" #full regressor training
+python main.py --basename cifar_stylegan --mode train_regressor --parameters "{'load_w_regressor':True, 'train_w_regressor':False, 'regressor_opts':{'classname':'netr32', 'opts'={'hidden_dimension_base':256, 'output_dimension':2}}, 'training_opts':{'n_epochs':1, 'print_every':10}}" #full regressor training
  
 
 

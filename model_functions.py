@@ -486,6 +486,9 @@ class Regressor_Update(Predictor_Update_Base):
         if model.info.opts.training:
             self.scheduler = self.regressor_scheduler
 
+        if 'regressor' not in self.__dict__:
+            self.regressor = self.w_regressor
+
     def __call__(self, model, batch, epoch, iternum):
         self._step_lr(epoch, iternum)
 
@@ -498,8 +501,11 @@ class Regressor_Update(Predictor_Update_Base):
         return metrics
        
     def run(self, model, batch):
-        image_batch = batch.image.to(self.device)
-        encodings = self.regressor(image_batch)
+        if 'image' in batch:
+            data = batch.image.to(self.device)
+        elif 'w_values' in batch:
+            data = batch.w_values.to(self.device)
+        encodings = self.regressor(data).squeeze(1)
         outputs = utils.EasyDict(encodings=encodings)
         metrics = {}
 
@@ -515,6 +521,7 @@ class Regressor_Update(Predictor_Update_Base):
             metrics['{0}/regressor_loss'.format(model.state.mode)] = regressor_loss_value
 
         return outputs, utils.dict_from_paths(metrics)
+
 
 
 class StyleGAN_Full_Regressor_Update(Predictor_Update_Base):
