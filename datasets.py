@@ -35,12 +35,15 @@ keysets = utils.EasyDict(**{
 class RandomDataset(torch.utils.data.Dataset):
     def __init__(self, length=1000, point_size=64, nlabels=10):
         self.length = length
-        self.point_size = 64
+        self.point_size = point_size
         self.nlabels = nlabels
     def __len__(self):
         return self.length
     def __getitem__(self, index):
-        return utils.DataDict(image=torch.randn(self.point_size), label=torch.randint(self.nlabels,size=(1,))[0], _size=1)
+        label_index = torch.randint(self.nlabels,size=(1,))[0]
+        label_one_hot = torch.zeros(self.nlabels)
+        label_one_hot[label_index] = 1
+        return utils.DataDict(image=torch.randn(self.point_size), label=label_one_hot, _size=1)
 
 class GeneratorOutputLoader(torch.utils.data.Dataset):
     def __init__(self, generator_net, length, batch_size, latent_size, device, class_conditioned=False, num_classes=-1, stylegan=False):

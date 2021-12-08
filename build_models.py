@@ -350,7 +350,7 @@ def build_generator_model(opts):
     model.components.generator.network.object_.eval() #Always stays eval
 
 
-    if opts.max_devices > 1:
+    if opts.max_devices > 1 and not opts.stylegan_generator:
         model.components.generator.network.object_ = torch.nn.DataParallel(model.components.generator.network.object_)
 
     

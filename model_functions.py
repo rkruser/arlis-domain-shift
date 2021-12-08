@@ -722,7 +722,7 @@ class Invert_StyleGAN_Generator(Model_Function_Base):
 def jacobian(inputs, outputs, return_jacobian=False):
     num_points = inputs.size(0)
     output_size = outputs.numel() // num_points
-    input_size = z_codes.numel() // num_points
+    input_size = inputs.numel() // num_points
     
     outputs = outputs.view(num_points, output_size)
     
@@ -743,7 +743,7 @@ def jacobian(inputs, outputs, return_jacobian=False):
     for k in range(num_points):
         R = np.linalg.qr(gradients[k], mode='r')
         jacobian_score = -np.log(np.abs(R.diagonal())).sum() #negative because inverting the diagonal elements
-        log_jacobian_determinants[k] = jacobian_score
+        log_jacobian_determinants[k] = torch.tensor(jacobian_score)
 
     if return_jacobian:
         return log_jacobian_determinants, gradients
@@ -805,6 +805,7 @@ class StyleGAN_Logprobs(Model_Function_Base):
 #        z_codes = z_codes.to(self.device)
         z_codes.requires_grad_(True)
         w_values = self.generator.mapping(z_codes, conditioned_classes)
+        w_values = w_values[:,0,:]
         
         log_jacobian_determinants = jacobian(z_codes, w_values)
         log_prior_vals = log_priors(z_codes, classes=conditioned_classes, num_classes=num_classes)

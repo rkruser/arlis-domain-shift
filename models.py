@@ -189,13 +189,37 @@ class NetR32(nn.Module):
         nn.Linear(opt.ndf*4, opt.regressor_out_dims)
     )
 
+  def forward(self, images):
+    output = self.main(images)
+    output = output.reshape(output.size(0),-1)
+    prediction = self.predictor(output).squeeze(1)
+    return prediction
 
+
+
+###########
+class NetR_W(nn.Module):
+  def __init__(self, opt):
+    super().__init__()
+
+    # Predictor takes main output and produces a probability
+    self.main = nn.Sequential(
+        nn.Linear(opt.nz, opt.ndf*4),
+        nn.LeakyReLU(0.2, inplace=True),
+        nn.Linear(opt.ndf*4, opt.ndf*4),
+        nn.LeakyReLU(0.2, inplace=True),
+        nn.Linear(opt.ndf*4, opt.ndf*4),
+        nn.LeakyReLU(0.2,inplace=True),
+        nn.Linear(opt.ndf*4, opt.regressor_out_dims)
+    )
 
   def forward(self, images):
     output = self.main(images)
     output = output.reshape(output.size(0),-1)
     prediction = self.predictor(output).squeeze(1)
     return prediction
+
+
 
 
 # General classifier
@@ -283,15 +307,6 @@ def weights_init(m):
             torch.nn.init.constant_(m.bias, 0.0)
 
 
-
-
-
-
-
-
-        
-
-
 def load_torch_class(classname, *args, **kwargs):
     kwargs = edict(**kwargs)
     if classname == 'netg32':
@@ -341,6 +356,13 @@ def load_torch_class(classname, *args, **kwargs):
     elif classname == 'stylegan3-ffhqu':
         opt = edict()
         return get_stylegan_ffhqu(opt)
+    elif classname == 'w_regressor':
+        opt = edict()
+        opt.w_size = kwargs.input_dimension
+        opt.ndf = kwargs.hidden_dimension
+        opt.num_out = kwargs.output_dimension
+        opt.num_inner_layers = kwargs.num_inner_layers
+        return W_regressor(opt)
 
     elif classname == 'stylegan2-ada-cifar10':
         print("Opening pretrained stylegan2")

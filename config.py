@@ -162,6 +162,7 @@ class_default_opts_dict = {
     'netd32':edict(input_dimension=(3,32,32), hidden_dimension_base=64),
     'nete32':edict(input_dimension=(3,32,32), hidden_dimension_base=64, output_dimension=100),
     'netr32':edict(input_dimension=(3,32,32), hidden_dimension_base=64, output_dimension=2),
+    'w_regressor':edict(input_dimension=512, hidden_dimension=1024, output_dimension=1, num_inner_layers=4), #w_regressor network
     'netc32':edict(input_dimension=(3,32,32), hidden_dimension_base=64, feature_dimension=128, output_dimension=1),
     'testg':edict(latent_dimension=8),
     'stylegan2-ada-cifar10':edict(name='pretrained_stylegan', opts={'latent_dimension':512}, pickled=True, class_condition=torch.arange(10)),

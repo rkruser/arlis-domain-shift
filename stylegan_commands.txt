@@ -13,7 +13,7 @@ python main.py --basename cifar_stylegan --mode invert_dataset --parameters "{'d
 # Calculate W jacobians
 # Chart out flow by hand
 # Test this next
-python main.py --basename cifar_stylegan --mode calculate_jacobians --parameters "{'stylegan_generator':True, 'load_generator_from':'/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl', 'load_generator_external_opts':{'classname':'stylegan2-ada-cifar10', 'name':'cifar_pretrained_stylegan', 'opts':{}, 'pickled':True}}"
+python main.py --basename cifar_stylegan --mode calculate_jacobians --parameters "{'stylegan_w_jacobians':True, 'stylegan_generator':True, 'load_generator_from':'/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl', 'load_generator_external_opts':{'classname':'stylegan2-ada-cifar10', 'name':'cifar_pretrained_stylegan', 'opts':{}, 'pickled':True}}"
 
 
 # Train W regressor
