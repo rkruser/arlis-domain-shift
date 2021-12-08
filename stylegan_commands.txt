@@ -4,10 +4,10 @@ Stylegan2 commands
 # Need to normalize stylegan outputs to (-1,1) or something
 # Looks like they are supposed to already be normalized to (-1,1), except they can go a bit out of bounds
 # Need to set encoder model so that it has the right dimensions to deal with stylegan2
-python main.py --basename cifar_stylegan --mode train_encoder --parameters "{'stylegan_generator':True, 'class_conditioned_generator':True, 'num_conditioned_classes':10, 'load_generator_from':'/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl', 'load_generator_external_opts':{'classname':'stylegan2-ada-cifar10', 'name':'cifar_pretrained_stylegan', 'opts':{}, 'pickled':True}, 'encoder_opts':{'classname':'nete32', 'opts':{'hidden_dimension_base':256,'output_dimension':512}}, 'training_opts':{'n_epochs':1, 'print_every':10}}"
+python main.py --basename cifar_stylegan --mode train_encoder --parameters "{'stylegan_generator':True, 'class_conditioned_generator':True, 'num_conditioned_classes':10, 'load_generator_from':'/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl', 'load_generator_external_opts':{'classname':'stylegan2-ada-cifar10', 'name':'cifar_pretrained_stylegan', 'opts':{}, 'pickled':True}, 'encoder_opts':{'classname':'nete32', 'opts':{'hidden_dimension_base':128,'output_dimension':512}}, 'training_opts':{'n_epochs':5, 'print_every':100, 'checkpoint_every':1}}"
 
 # Inversion of Cifar10
-python main.py --basename cifar_stylegan --mode invert_dataset --parameters "{'dataset_opts':{'dataset':'cifar10'}, 'stylegan_generator':True, 'load_generator_from':'/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl', 'load_generator_external_opts':{'classname':'stylegan2-ada-cifar10', 'name':'cifar_pretrained_stylegan', 'opts':{}, 'pickled':True}, 'training_opts':{'batch_size':32}, 'inversion_opts':{'latent_lr':0.01, 'latent_betas':(0.9,0.999), 'inversion_iters':100}}"
+python main.py --basename cifar_stylegan --mode invert_dataset --parameters "{'dataset_opts':{'dataset':'cifar10'}, 'stylegan_generator':True, 'load_generator_from':'/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl', 'load_generator_external_opts':{'classname':'stylegan2-ada-cifar10', 'name':'cifar_pretrained_stylegan', 'opts':{}, 'pickled':True}, 'training_opts':{'batch_size':32}, 'inversion_opts':{'latent_lr':0.01, 'latent_betas':(0.9,0.999), 'inversion_iters':2}}"
 
 
 # Calculate W jacobians
@@ -17,11 +17,18 @@ python main.py --basename cifar_stylegan --mode calculate_jacobians --parameters
 
 
 # Train W regressor
-python main.py --basename cifar_stylegan --mode train_regressor --parameters "{'load_w_regressor':False, 'train_w_regressor':True, 'regressor_opts':{'classname':'w_regressor'}, 'training_opts':{'n_epochs':1, 'print_every':10}}"
+python main.py --basename cifar_stylegan --mode train_regressor --parameters "{'load_w_regressor':False, 'train_w_regressor':True, 'regressor_opts':{'classname':'w_regressor', 'opts':{'hidden_dimension':512}}, 'training_opts':{'n_epochs':5, 'print_every':100, 'checkpoint_every':1}}"
 
 
 # Train full regressor
-python main.py --basename cifar_stylegan --mode train_regressor --parameters "{'stylegan_generator':True, 'load_w_regressor':True, 'train_w_regressor':False, 'dataset_opts':{'dataset':'cifar10'}, 'regressor_opts':{'classname':'netr32', 'opts':{'hidden_dimension_base':256, 'output_dimension':2}}, 'training_opts':{'n_epochs':1, 'print_every':10, 'batch_size':32}}"
+python main.py --basename cifar_stylegan --mode train_regressor --parameters "{'stylegan_generator':True, 'load_w_regressor':True, 'train_w_regressor':False, 'dataset_opts':{'dataset':'cifar10'}, 'regressor_opts':{'classname':'netr32', 'opts':{'hidden_dimension_base':128, 'output_dimension':2}}, 'training_opts':{'n_epochs':5, 'print_every':100, 'batch_size':128, 'checkpoint_every':1}}"
  
 
+# Apply trained regressor
+python main.py --basename cifar_stylegan --mode apply_regressor --parameters "{'regressor_output_name':'regressor_cifar_train_output.pth', 'dataset_opts':{'dataset':'cifar10', 'train':True}, 'parallelize_across_all':False}"
 
+python main.py --basename cifar_stylegan --mode apply_regressor --parameters "{'regressor_output_name':'regressor_cifar_test_output.pth', 'dataset_opts':{'dataset':'cifar10', 'train':False}, 'parallelize_across_all':False}"
+
+python main.py --basename cifar_stylegan --mode apply_regressor --parameters "{'regressor_output_name':'regressor_mnist_train_output.pth', 'dataset_opts':{'dataset':'mnist', 'train':True}, 'parallelize_across_all':False}"
+
+python main.py --basename cifar_stylegan --mode apply_regressor --parameters "{'regressor_output_name':'regressor_mnist_test_output.pth', 'dataset_opts':{'dataset':'mnist', 'train':False}, 'parallelize_across_all':False}"

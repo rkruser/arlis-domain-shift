@@ -108,6 +108,7 @@ dataset_opts = edict(
 #    dataset_folder = '/scratch0/datasets',
 #    dataset_folder = folders.dataset_folder,
     dataset = 'mnist',    
+    train = True,
 )
 
 
@@ -369,17 +370,19 @@ def sample_gan_opts(all_opts, parameters, basename):
 
 
 def apply_regressor_opts(all_opts, parameters, basename):
-    train_regressor_task_opts = edict(
+    apply_regressor_task_opts = edict(
         load_regressor_from = os.path.join(all_opts.model_folder,'regressor.pth'),
         lr_schedule = [],
         loss_function = 'l2',
         regressor_output_name = 'regressor_output.pth',
+        train_w_regressor = False,
+        load_w_regressor = False,
     )
     
-    all_opts.update(train_regressor_task_opts)
+    all_opts.update(apply_regressor_task_opts)
     all_opts.training = False
 
-    all_opts.update(train_regressor_task_opts)
+#    all_opts.update(train_regressor_task_opts)
     all_opts.training_opts = training_opts # tailor to regressor
 
     # Handle parameter dependencies

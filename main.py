@@ -175,8 +175,8 @@ Handle regressor application
 
 def apply_regressor(opts):
     model = build_models.build_regressor_model(opts)
-    dataset = datasets.get_dataset(dataset=opts.dataset_opts.dataset, dataset_folder=opts.dataset_opts.dataset_folder, train=False) #apply to test data (perhaps)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size = opts.training_opts.batch_size, shuffle=opts.training_opts.shuffle, drop_last=opts.training_opts.drop_last, collate_fn = collate_functions[opts.training_opts.collate_fn], pin_memory=opts.training_opts.pin_memory)
+    dataset = datasets.get_dataset(dataset=opts.dataset_opts.dataset, dataset_folder=opts.dataset_opts.dataset_folder, train=opts.dataset_opts.train) 
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size = opts.training_opts.batch_size, shuffle=False, drop_last=False, collate_fn = collate_functions[opts.training_opts.collate_fn], pin_memory=opts.training_opts.pin_memory)
     if opts.load_tracker_from is not None:
         tracker_state_dict = pickle.load(open(opts.load_tracker_from, 'rb'))
         opts.training_opts.tracking_opts.load_state_dict = tracker_state_dict # a StateDictWrapper object
@@ -184,6 +184,9 @@ def apply_regressor(opts):
 
     cur_generated_dataset_folder = os.path.join(opts.generated_dataset_folder, opts.basename)
     torch.save(regressor_outputs, os.path.join(cur_generated_dataset_folder, opts.regressor_output_name))
+
+
+
 
 
 function_map = {

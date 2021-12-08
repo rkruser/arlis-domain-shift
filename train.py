@@ -123,11 +123,24 @@ def train(model, train_loader, train_opts, val_loader=None, tracker=None, run_op
 def simple_regressor_run(model, dataloader, run_opts):
     model.functions.set_mode(model,'eval')
     outputs = []
-    for batch in dataloader:
-        output, _ = model.functions.run(model,batch)
-        outputs.append(output)
+    print("Regressing")
+    print(model.info.opts.dataset_opts)
+    print("Number of batches:", len(dataloader))
+
+    with torch.no_grad():
+        for batch in dataloader:
+            output, _ = model.functions.run(model,batch)
+            outputs.append(output)
+            
+            torch.cuda.empty_cache() #?
     
     return collate_functions.tensor_concat(outputs)
+
+
+
+
+
+
 
 def invert_generator(model, dataloader, run_opts):
     model.functions.set_mode(model, 'eval')
