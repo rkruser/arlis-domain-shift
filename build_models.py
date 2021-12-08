@@ -219,7 +219,8 @@ def build_gan_model(opts):
     
 
     if opts.max_devices > 1:
-        model.components.generator.network.object_ = torch.nn.DataParallel(model.components.generator.network.object_)
+        if not opts.stylegan_generator:
+            model.components.generator.network.object_ = torch.nn.DataParallel(model.components.generator.network.object_)
         model.components.discriminator.network.object_ = torch.nn.DataParallel(model.components.discriminator.network.object_)
 
 
@@ -301,7 +302,8 @@ def build_encoder_model(opts):
 
     if opts.max_devices > 1:
         model.components.encoder.network.object_ = torch.nn.DataParallel(model.components.encoder.network.object_)
-        model.components.generator.network.object_ = torch.nn.DataParallel(model.components.generator.network.object_)
+        if not opts.stylegan_generator:
+            model.components.generator.network.object_ = torch.nn.DataParallel(model.components.generator.network.object_)
 
 
     
@@ -327,7 +329,11 @@ def build_encoder_model(opts):
         else:
             model.functions.invert = model_functions.Invert_Generator(model)
     else:
-        update_func = model_functions.Encoder_Update(model)
+        if opts.stylegan_generator:
+             update_func = model_functions.Encoder_Stylegan_Update(model)
+        else:
+            update_func = model_functions.Encoder_Update(model)
+
         model.functions.run = update_func.run
         model.functions.update = update_func
 

@@ -80,7 +80,13 @@ def train_encoder(opts):
 
     latent_dimension = model.components.generator.network.opts.latent_dimension
     generator_net = model.components.generator.network.object_
-    dataloader = datasets.GeneratorOutputLoader(generator_net, 1000, opts.training_opts.batch_size, latent_dimension, opts.device)
+
+#    if opts.stylegan_generator:
+    dataloader = datasets.GeneratorOutputLoader(generator_net, 1000, opts.training_opts.batch_size, latent_dimension, opts.device,
+                                                    class_conditioned=opts.class_conditioned_generator, 
+                                                    num_classes=opts.num_conditioned_classes, stylegan=opts.stylegan_generator)
+#    else:
+#        dataloader = datasets.GeneratorOutputLoader(generator_net, 1000, opts.training_opts.batch_size, latent_dimension, opts.device)
 
     if opts.load_tracker_from is not None:
         tracker_state_dict = pickle.load(open(opts.load_tracker_from, 'rb'))

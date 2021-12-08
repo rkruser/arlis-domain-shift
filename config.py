@@ -114,6 +114,8 @@ dataset_opts = edict(
 global_model_opts = edict(
     append_iteration = False,
     stylegan_generator = False,
+    class_conditioned_generator = False,
+    num_conditioned_classes = -1,
 )
 
 global_network_opts = edict(
@@ -162,7 +164,9 @@ class_default_opts_dict = {
     'netr32':edict(input_dimension=(3,32,32), hidden_dimension_base=64, output_dimension=2),
     'netc32':edict(input_dimension=(3,32,32), hidden_dimension_base=64, feature_dimension=128, output_dimension=1),
     'testg':edict(latent_dimension=8),
-    'stylegan2-ada-cifar10':edict(name='pretrained_stylegan', opts={}, pickled=True, class_condition=torch.arange(10)),
+    'stylegan2-ada-cifar10':edict(name='pretrained_stylegan', opts={'latent_dimension':512}, pickled=True, class_condition=torch.arange(10)),
+#    'nete32_stylegan_cifar10':edict(input_dimension=(3,32,32), hidden_dimension_base=256, output_dimension=512),
+
 }
 
 def class_opts(classname):

@@ -1,0 +1,26 @@
+Stylegan2 commands
+
+# Encoder training
+# Need to normalize stylegan outputs to (-1,1) or something
+# Need to set encoder model so that it has the right dimensions to deal with stylegan2
+python main.py --basename cifar_stylegan --mode train_encoder --parameters "{'stylegan_generator':True, 'class_conditioned_generator':True, 'num_conditioned_classes':10, 'load_generator_from':'/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl', 'load_generator_external_opts':{'classname':'stylegan2-ada-cifar10', 'name':'cifar_pretrained_stylegan', 'opts':{}, 'pickled':True}, 'encoder_opts':{'classname':'nete32', 'opts':{'hidden_dimension_base':256,'output_dimension':512}}, 'training_opts':{'n_epochs':1, 'print_every':10}}"
+
+# Inversion of Cifar10
+python main.py --basename cifar_stylegan --mode invert_dataset --parameters "{'dataset_opts':{'dataset':'cifar10'}, 'stylegan_generator':True, 'load_generator_from':'/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl', 'load_generator_external_opts':{'classname':'stylegan2-ada-cifar10', 'name':'cifar_pretrained_stylegan', 'opts':{}, 'pickled':True}}"
+
+
+# Calculate W jacobians
+# Chart out flow by hand
+# Test this next
+python main.py --basename cifar_stylegan --mode calculate_jacobians --parameters "{'stylegan_generator':True, 'load_generator_from':'/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl', 'load_generator_external_opts':{'classname':'stylegan2-ada-cifar10', 'name':'cifar_pretrained_stylegan', 'opts':{}, 'pickled':True}}"
+
+
+# Train W regressor
+python main.py --basename cifar_stylegan --mode train_regressor --parameters "{'load_w_regressor':True, 'train_w_regressor':True, 'regressor_opts':{'classname':'netr_stylegan_wnet'}, 'training_opts':{'n_epochs':1, 'print_every':10}}" #w_regressor training
+
+
+# Train full regressor
+python main.py --basename cifar_stylegan --mode train_regressor --parameters "{'load_w_regressor':True, 'train_w_regressor':False, 'regressor_opts':{'classname':'netr32_stylegan_regressor_net'}, 'training_opts':{'n_epochs':1, 'print_every':10}}" #full regressor training
+ 
+
+

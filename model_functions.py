@@ -444,6 +444,39 @@ class Encoder_Update(Predictor_Update_Base):
         return outputs, utils.dict_from_paths(metrics)
         
 
+class Encoder_Stylegan_Update(Predictor_Update_Base):
+    def __init__(self, model): #, sample_func=None):
+        super().__init__(model)
+        self.scheduler = self.encoder_scheduler
+#        self.sample = sample_func
+
+    def __call__(self, model, batch, epoch, iternum):
+        self._step_lr(epoch, iternum)
+
+        outputs, metrics = self.run(self.model, batch)
+
+        self.encoder.zero_grad()
+        outputs.encoder_loss.backward()
+        self.encoder_optim.step()
+            
+        return metrics
+    
+    def run(self, model, batch):
+        image_batch = batch.fake_outputs.to(self.device)
+        encodings = self.encoder(image_batch)
+        outputs = utils.EasyDict(encodings=encodings)
+        metrics = {}
+        if 'w_codes' in batch:
+            labels = batch.w_codes.to(self.device)
+            encoder_loss = self.loss_function(encodings, labels)
+            encoder_loss_value = encoder_loss.item()
+            outputs.encoder_loss = encoder_loss
+            metrics['{0}/encoder_loss'.format(model.state.mode)] = encoder_loss_value
+
+        return outputs, utils.dict_from_paths(metrics)
+
+
+
 class Regressor_Update(Predictor_Update_Base):
     def __init__(self, model):
         super().__init__(model)

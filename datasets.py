@@ -67,7 +67,7 @@ class GeneratorOutputLoader(torch.utils.data.Dataset):
 
             if self.class_conditioned:
                 classes = torch.zeros(self.batch_size, self.num_classes, device=self.device)
-                class_indices = torch.randint(self.num_classes, (self.batch_size,1))
+                class_indices = torch.randint(self.num_classes, (self.batch_size,1), device=self.device)
                 classes.scatter_(1,class_indices,1)
                 #for i in range(self.batch_size):
                 #    classes[i,class_indices[i]] = 1
@@ -75,18 +75,22 @@ class GeneratorOutputLoader(torch.utils.data.Dataset):
                 if self.stylegan:
                     w = self.generator_net.mapping(latent, classes)
                     imgs = self.generator_net.synthesis(w, noise_mode='const', force_fp32=True)
-                    databatch = utils.DataDict(w_codes = w, fake_outputs = imgs, latent_codes = latent, class_codes=classes, _size=self.batch_size)
+                    w = w.detach()
+                    imgs = imgs.detach()
+                    databatch = utils.DataDict(w_codes = w[:,0,:], fake_outputs = imgs, latent_codes = latent, class_codes=classes, _size=self.batch_size)
                 else:
-                    outputs = self.generator_net(latent, classes)
+                    outputs = self.generator_net(latent, classes).detach()
                     utils.DataDict(fake_outputs=outputs, latent_codes=latent, class_codes=classes, _size=self.batch_size)
             
             else:
                 if self.stylegan:
                     w = self.generator_net.mapping(latent, classes)
                     imgs = self.generator_net.synthesis(w, noise_mode='const', force_fp32=True)
-                    databatch = utils.DataDict(w_codes = w, fake_outputs = imgs, latent_codes = latent, _size=self.batch_size)
+                    w = w.detach()
+                    imgs = imgs.detach()
+                    databatch = utils.DataDict(w_codes = w[:,0,:], fake_outputs = imgs, latent_codes = latent, _size=self.batch_size)
                 else:
-                    outputs = self.generator_net(latent)
+                    outputs = self.generator_net(latent).detach()
                     databatch = utils.DataDict(fake_outputs=outputs, latent_codes=latent, _size=self.batch_size)
 
                     
