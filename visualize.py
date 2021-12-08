@@ -29,7 +29,7 @@ def view_top_and_bottom(dataset, scores, num_each=64):
     bottom_all = extract_range(dataset, sorted_score_indices[:num_each])
     visualize_image_grid(bottom_all, nrow=8)
     
-    
+"""    
     class_labels = torch.zeros(len(dataset), dtype=torch.int64)
     for i in range(len(dataset)):
         y = dataset[i].label
@@ -55,7 +55,7 @@ def view_top_and_bottom(dataset, scores, num_each=64):
         print("Bottom label {0}".format(label))
         bottom_label = extract_range(dataset, label_sorted_score_indices[:num_each])
         visualize_image_grid(bottom_label, nrow=8)
-
+"""
 
 
 

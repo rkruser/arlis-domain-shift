@@ -86,10 +86,36 @@ Uses: regressor.pth
 Produces: datasets/generated_datasets/test1/regressor_output.pth
 
 
+### StyleGAN2-Cifar10 Training Flow
+Clone the [stylegan2-ada-pytorch](https://github.com/NVlabs/stylegan2-ada-pytorch) repo to a directory somewhere. Download the associated cifar10.pkl trained model file.
+
+Edit all the stylegan paths in saved_parameters.json to point to your cifar10.pkl file. Edit the other parameters as desired, such as the number of training epochs.
+
+To run the full training pipeline, use the following commands in sequence.
+
+To train an encoder to StyleGAN W-space:
+`python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_train_encoder`
+
+To invert the Cifar10 dataset:
+`python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_invert_dataset`
+
+To create a dataset of w-code log-probabilities for the w-regressor:
+`python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_calculate_w_jacobians`
+
+Train the w-regressor on the log probability dataset:
+`python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_train_w_regressor`
+
+Train a regressor to predict the on-manifold and off-manifold cifar scores:
+`python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_train_full_regressor`
+
+Apply the fully trained regressor to the cifar test set:
+`python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_apply_regressor_cifar_test`
+
+Visualize the results of applying the regressor:
+`python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_visualize_cifar_test`
 
 
-
-
+Notes: StyleGAN has two subnetworks, "mapping" and "synthesis". The mapping network takes z-codes and produces w-codes, which are fed into the synthesis network to produce images. When inverting a stylegan, it is easier to just go back to the w-codes rather than the z-codes, hence the w_encoder and w_regressor. Ultimately, though, the end product of the training pipeline is the same: a final regressor network that takes images and returns their (in-distribution, out-of-distribution) scores.
 
 
 ### Files in this project:
