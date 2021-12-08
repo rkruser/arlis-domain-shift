@@ -94,24 +94,31 @@ Edit all the stylegan paths in saved_parameters.json to point to your cifar10.pk
 To run the full training pipeline, use the following commands in sequence.
 
 To train an encoder to StyleGAN W-space:
+
 `python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_train_encoder`
 
 To invert the Cifar10 dataset:
+
 `python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_invert_dataset`
 
 To create a dataset of w-code log-probabilities for the w-regressor:
+
 `python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_calculate_w_jacobians`
 
 Train the w-regressor on the log probability dataset:
+
 `python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_train_w_regressor`
 
 Train a regressor to predict the on-manifold and off-manifold cifar scores:
+
 `python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_train_full_regressor`
 
 Apply the fully trained regressor to the cifar test set:
+
 `python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_apply_regressor_cifar_test`
 
 Visualize the results of applying the regressor:
+
 `python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_visualize_cifar_test`
 
 
