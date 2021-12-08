@@ -3,3 +3,6 @@
 *.swp
 .ipynb_checkpoints/
 folder_config.json
+
+logs/
+tensorboard/
