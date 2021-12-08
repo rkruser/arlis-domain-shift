@@ -33,3 +33,7 @@ python main.py --basename cifar_stylegan --mode apply_regressor --parameters "{'
 python main.py --basename cifar_stylegan --mode apply_regressor --parameters "{'regressor_output_name':'regressor_mnist_train_output.pth', 'dataset_opts':{'dataset':'mnist', 'train':True}, 'parallelize_across_all':False}"
 
 python main.py --basename cifar_stylegan --mode apply_regressor --parameters "{'regressor_output_name':'regressor_mnist_test_output.pth', 'dataset_opts':{'dataset':'mnist', 'train':False}, 'parallelize_across_all':False}"
+
+
+
+python main.py --basename cifar_stylegan --parameters "{'data_to_visualize':'regressor_mnist_train_output.pth', 'dataset_opts':{'dataset':'mnist', 'train':True}}" --mode visualize_data

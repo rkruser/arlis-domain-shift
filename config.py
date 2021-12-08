@@ -397,6 +397,15 @@ def apply_regressor_opts(all_opts, parameters, basename):
     return all_opts
 
 
+def visualize_opts(all_opts, parameters, basename):
+    #saved_data_folder = os.path.join(all_opts.generated_dataset_folder, basename)
+    all_opts.data_to_visualize = 'regressor_cifar_train_output.pth'
+    all_opts.dataset_opts.dataset = 'cifar10'
+    all_opts.dataset_opts.train = True
+
+    return all_opts
+
+
 def train_classifier_opts(all_opts, parameters, basename):
     pass
 
@@ -443,6 +452,7 @@ task_opt_functions = {
     'calculate_jacobians':calculate_jacobians_opts,
     'sample_gan':sample_gan_opts,
     'apply_regressor':apply_regressor_opts,
+    'visualize_data':visualize_opts,
 }
 
 def collect_options(mode, basename, parameters, parameter_key=None):

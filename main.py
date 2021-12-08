@@ -18,13 +18,14 @@ import config
 import datasets
 import build_models
 import train
+import visualize
 
 import torch
 
 from datasets import collate_functions
 
 
-modes = ['train_gan', 'sample_gan', 'train_encoder', 'invert_dataset', 'calculate_jacobians', 'train_regressor', 'apply_regressor', 'save_parameters', 'view_saved_parameters']
+modes = ['train_gan', 'sample_gan', 'train_encoder', 'invert_dataset', 'calculate_jacobians', 'train_regressor', 'apply_regressor', 'visualize_data', 'save_parameters', 'view_saved_parameters']
 parser = argparse.ArgumentParser()
 parser.add_argument('--parameters', type=str, default='{}', help='Global configuration parameters. Argument should be formatted as a python-correct string in quotations, specifying (nested) dictionaries of parameters as desired. Use --show_options to view all possible options for the current specified configuration.')
 parser.add_argument('--basename', type=str, default='model_'+str(datetime.datetime.now()), help='Base name for the current run')
@@ -187,6 +188,14 @@ def apply_regressor(opts):
 
 
 
+def visualize_data(opts):
+    saved_data_folder = os.path.join(opts.generated_dataset_folder, opts.basename)
+    saved_data_file = os.path.join(saved_data_folder, opts.data_to_visualize)
+    data = torch.load(saved_data_file)
+    dataset = datasets.get_dataset(dataset=opts.dataset_opts.dataset, dataset_folder=opts.dataset_opts.dataset_folder, train=opts.dataset_opts.train) 
+    #dataloader = torch.utils.data.DataLoader(dataset, batch_size = opts.training_opts.batch_size, shuffle=False, drop_last=False, collate_fn = collate_functions[opts.training_opts.collate_fn], pin_memory=opts.training_opts.pin_memory)
+    visualize.visualize(data, dataset, opts)
+
 
 
 function_map = {
@@ -197,6 +206,7 @@ function_map = {
         'calculate_jacobians':calculate_jacobians,
         'train_regressor':train_regressor,
         'apply_regressor':apply_regressor,
+        'visualize_data':visualize_data,
         }            
 
 
