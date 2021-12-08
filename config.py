@@ -425,7 +425,7 @@ def save_parameters(key, parameter_string):
 
     all_saved_parameters[key] = command_line_parameters
     with open('saved_parameters.json','w') as saved_parameter_file_write:
-        json.dump(all_saved_parameters, saved_parameter_file_write)
+        json.dump(all_saved_parameters, saved_parameter_file_write, indent=4)
 
 
 def view_parameters(print_each):
@@ -465,6 +465,8 @@ def collect_options(mode, basename, parameters, parameter_key=None):
             parameters.recursive_update(command_line_parameters)
     else:
         parameters = command_line_parameters 
+
+    print("*****Running with user-defined parameters:*****\n", parameters)
 
     all_opts = edict() 
     all_opts.update(folders)

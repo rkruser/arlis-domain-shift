@@ -219,7 +219,7 @@ def main(opt):
         sys.exit()
 
     all_options = config.collect_options(opt.mode, opt.basename, opt.parameters, opt.parameter_key)
-    
+
     if opt.show_options:
         print(all_options)
         sys.exit()
