@@ -403,6 +403,9 @@ def visualize_opts(all_opts, parameters, basename):
     all_opts.dataset_opts.dataset = 'cifar10'
     all_opts.dataset_opts.train = True
 
+    all_opts.visualize_comparison = False
+    all_opts.comparison_data = 'regressor_mnist_train_output.pth'
+
     return all_opts
 
 

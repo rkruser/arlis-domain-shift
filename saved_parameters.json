@@ -181,6 +181,10 @@
             "dataset": "cifar10",
             "train": true
         }
+    "cifar_stylegan_compare": {
+        "data_to_visualize": "regressor_cifar_train_output.pth",
+        "visualize_comparison": true,
+        "comparison_data": "regressor_mnist_train_output.pth"
     },
     "dummy_parameter": {}
 }

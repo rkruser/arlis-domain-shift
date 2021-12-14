@@ -192,9 +192,15 @@ def visualize_data(opts):
     saved_data_folder = os.path.join(opts.generated_dataset_folder, opts.basename)
     saved_data_file = os.path.join(saved_data_folder, opts.data_to_visualize)
     data = torch.load(saved_data_file)
-    dataset = datasets.get_dataset(dataset=opts.dataset_opts.dataset, dataset_folder=opts.dataset_opts.dataset_folder, train=opts.dataset_opts.train) 
-    #dataloader = torch.utils.data.DataLoader(dataset, batch_size = opts.training_opts.batch_size, shuffle=False, drop_last=False, collate_fn = collate_functions[opts.training_opts.collate_fn], pin_memory=opts.training_opts.pin_memory)
-    visualize.visualize(data, dataset, opts)
+
+    if not opts.visualize_comparison:
+        dataset = datasets.get_dataset(dataset=opts.dataset_opts.dataset, dataset_folder=opts.dataset_opts.dataset_folder, train=opts.dataset_opts.train) 
+        #dataloader = torch.utils.data.DataLoader(dataset, batch_size = opts.training_opts.batch_size, shuffle=False, drop_last=False, collate_fn = collate_functions[opts.training_opts.collate_fn], pin_memory=opts.training_opts.pin_memory)
+        visualize.visualize(data, dataset, opts)
+    else:
+        comparison_file = os.path.join(saved_data_folder, opts.comparison_data)
+        data_2 = torch.load(comparison_file)
+        visualize_compare(data, data_2, opts)
 
 
 

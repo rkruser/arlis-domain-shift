@@ -78,3 +78,22 @@ def visualize(data, dataset, opts):
     print("Off manifold")
     view_top_and_bottom(dataset, off_manifold)
 
+
+def visualize_compare(d1, d2, opts):
+    r1 = d1.encodings.detach().cpu().numpy()
+    r2 = d2.encodings.detach().cpu().numpy()
+    
+    plt.hist(r1[:,0], bins=100, density=True, label='d1_on')
+    plt.hist(r2[:,0], bins=100, density=True, label='d2_on')
+    plt.title("On-manifold")
+    plt.legend(loc='upper right')
+    plt.show()
+
+    plt.hist(-r1[:,1], bins=100, density=True, label='d1_off')
+    plt.hist(-r2[:,1], bins=100, density=True, label='d2_off')
+    plt.title("Off-manifold")
+    plt.legend(loc='upper right')
+    plt.show()
+
+    
+
