@@ -119,7 +119,7 @@ Apply the fully trained regressor to the cifar test set:
 
 Visualize the results of applying the regressor:
 
-`python main.py --basename cifar_stylegan --mode train_encoder --parameter_key cifar_stylegan_visualize_cifar_test`
+`python main.py --basename cifar_stylegan --mode visualize_data --parameter_key cifar_stylegan_visualize_cifar_test`
 
 
 Notes: StyleGAN has two subnetworks, "mapping" and "synthesis". The mapping network takes z-codes and produces w-codes, which are fed into the synthesis network to produce images. When inverting a stylegan, it is easier to just go back to the w-codes rather than the z-codes, hence the w_encoder and w_regressor. Ultimately, though, the end product of the training pipeline is the same: a final regressor network that takes images and returns their (in-distribution, out-of-distribution) scores.

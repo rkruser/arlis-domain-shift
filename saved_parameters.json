@@ -161,5 +161,26 @@
             "train": false
         }
     },
+    "cifar_stylegan_visualize_mnist_test": {
+        "data_to_visualize": "regressor_mnist_test_output.pth",
+        "dataset_opts": {
+            "dataset": "mnist",
+            "train": false
+        }
+    },
+    "cifar_stylegan_visualize_mnist_train": {
+        "data_to_visualize": "regressor_mnist_train_output.pth",
+        "dataset_opts": {
+            "dataset": "mnist",
+            "train": true
+        }
+    },
+    "cifar_stylegan_visualize_cifar_train": {
+        "data_to_visualize": "regressor_cifar_train_output.pth",
+        "dataset_opts": {
+            "dataset": "cifar10",
+            "train": true
+        }
+    },
     "dummy_parameter": {}
 }

@@ -70,7 +70,7 @@ def visualize(data, dataset, opts):
     plt.show()
 
     print("Off manifold histogram")
-    plt.hist(off_manifold.numpy(), bins=100, density=True)
+    plt.hist(-off_manifold.numpy(), bins=100, density=True)
     plt.show()
 
     print("On manifold")
