@@ -200,7 +200,7 @@ def visualize_data(opts):
     else:
         comparison_file = os.path.join(saved_data_folder, opts.comparison_data)
         data_2 = torch.load(comparison_file)
-        visualize_compare(data, data_2, opts)
+        visualize.visualize_compare(data, data_2, opts)
 
 
 
