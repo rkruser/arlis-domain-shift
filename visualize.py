@@ -4,11 +4,14 @@ import numpy
 import torchvision
 
 def extract_range(dset, rn):
-    allpts = []
-    for i in rn:
-        allpts.append(dset[i].image)
-    allpts = torch.stack(allpts)
-    return allpts
+    if isinstance(dset, torch.Tensor):
+        return dset[rn]
+    else:
+        allpts = []
+        for i in rn:
+            allpts.append(dset[i].image)
+        allpts = torch.stack(allpts)
+        return allpts
 
 def visualize_image_grid(ims, nrow=4):
     sample_grid = torchvision.utils.make_grid(ims, nrow=nrow)
@@ -32,6 +35,7 @@ def view_top_and_bottom(dataset, scores, num_each=64, nrow=8):
 
 
 
+"""
     class_labels = torch.zeros(len(dataset), dtype=torch.int64)
     for i in range(len(dataset)):
         y = dataset[i].label
@@ -57,7 +61,7 @@ def view_top_and_bottom(dataset, scores, num_each=64, nrow=8):
         print("Bottom label {0}".format(label))
         bottom_label = extract_range(dataset, label_sorted_score_indices[:num_each])
         visualize_image_grid(bottom_label, nrow=nrow)
-
+"""
 
 
 """
@@ -92,11 +96,11 @@ def visualize(data, dataset, opts):
     plt.show()
 
     print("On manifold")
-    view_top_and_bottom(dataset, on_manifold, num_each=256, nrow=16)
+    view_top_and_bottom(dataset, on_manifold, num_each=64, nrow=8)
     print("Off manifold")
-    view_top_and_bottom(dataset, off_manifold, num_each=256, nrow=16)
+    view_top_and_bottom(dataset, off_manifold, num_each=64, nrow=8)
     print("Combined")
-    view_top_and_bottom(dataset, combined, num_each = 256, nrow = 16)
+    view_top_and_bottom(dataset, combined, num_each = 64, nrow = 8)
 
 
 def visualize_compare(d1, d2, opts):

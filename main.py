@@ -194,7 +194,12 @@ def visualize_data(opts):
     data = torch.load(saved_data_file)
 
     if not opts.visualize_comparison:
-        dataset = datasets.get_dataset(dataset=opts.dataset_opts.dataset, dataset_folder=opts.dataset_opts.dataset_folder, train=opts.dataset_opts.train) 
+        if opts.dataset_opts.dataset == 'generated':
+            dataset_file = os.path.join(saved_data_folder, 'latent_dataset_2.pth')
+            dataset = torch.load(dataset_file)['fake_ims'].detach().cpu()
+        else:
+            dataset = datasets.get_dataset(dataset=opts.dataset_opts.dataset, dataset_folder=opts.dataset_opts.dataset_folder, train=opts.dataset_opts.train) 
+
         #dataloader = torch.utils.data.DataLoader(dataset, batch_size = opts.training_opts.batch_size, shuffle=False, drop_last=False, collate_fn = collate_functions[opts.training_opts.collate_fn], pin_memory=opts.training_opts.pin_memory)
         visualize.visualize(data, dataset, opts)
     else:

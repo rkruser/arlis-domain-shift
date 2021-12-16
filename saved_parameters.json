@@ -182,6 +182,13 @@
             "train": true
         }
     },
+    "cifar_stylegan_visualize_cifar_generated": {
+        "data_to_visualize": "regressor_cifar_train_output.pth",
+        "dataset_opts": {
+            "dataset": "generated",
+            "train": true
+        }
+    },
     "cifar_stylegan_compare": {
         "data_to_visualize": "regressor_cifar_train_output.pth",
         "visualize_comparison": true,
