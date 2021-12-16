@@ -761,7 +761,7 @@ class Invert_StyleGAN_Generator(Model_Function_Base):
         ##########################
 
 
-        return utils.DataDict(w_codes = guesses.detach().cpu(), reconstruction_losses=reconstruction_losses.detach().cpu(), _size=batch_size)
+        return utils.DataDict(w_codes = guesses.detach().cpu(), fake_ims=fake_ims.detach().cpu(), reconstruction_losses=reconstruction_losses.detach().cpu(), _size=batch_size)
 
 
 

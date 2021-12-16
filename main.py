@@ -204,6 +204,7 @@ def visualize_data(opts):
 
 
 
+
 function_map = {
         'train_gan':train_gan,
         'sample_gan':sample_gan,

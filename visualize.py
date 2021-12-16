@@ -18,18 +18,20 @@ def visualize_image_grid(ims, nrow=4):
     plt.imshow(samples_processed)
     plt.show()
 
-def view_top_and_bottom(dataset, scores, num_each=64):
+def view_top_and_bottom(dataset, scores, num_each=64, nrow=8):
     sorted_score_indices = torch.argsort(scores)
         
     top_all = extract_range(dataset, sorted_score_indices[-num_each:]).flip(dims=(0,))
     print("Top all ims")
-    visualize_image_grid(top_all, nrow=8)
+    visualize_image_grid(top_all, nrow=nrow)
     
     print("Bottom all ims")
     bottom_all = extract_range(dataset, sorted_score_indices[:num_each])
-    visualize_image_grid(bottom_all, nrow=8)
+    visualize_image_grid(bottom_all, nrow=nrow)
     
-"""    
+
+
+
     class_labels = torch.zeros(len(dataset), dtype=torch.int64)
     for i in range(len(dataset)):
         y = dataset[i].label
@@ -51,19 +53,35 @@ def view_top_and_bottom(dataset, scores, num_each=64):
         print("=======================")
         print("Top label {0}".format(label))
         top_label = extract_range(dataset, label_sorted_score_indices[-num_each:]).flip(dims=(0,)) #Need to flip the top to put best first
-        visualize_image_grid(top_label, nrow=8)
+        visualize_image_grid(top_label, nrow=nrow)
         print("Bottom label {0}".format(label))
         bottom_label = extract_range(dataset, label_sorted_score_indices[:num_each])
-        visualize_image_grid(bottom_label, nrow=8)
-"""
+        visualize_image_grid(bottom_label, nrow=nrow)
 
+
+
+"""
+def view_top_and_bottom_both(dataset, on_scores, off_scores, num_each=64):
+    on_sorted_inds = torch.argsort(on_scores)
+    off_sorted_inds = torch.argsort(off_scores)
+        
+    top_all = extract_range(dataset, sorted_score_indices[-num_each:]).flip(dims=(0,))
+    print("Top all ims")
+    visualize_image_grid(top_all, nrow=8)
+    
+    print("Bottom all ims")
+    bottom_all = extract_range(dataset, sorted_score_indices[:num_each])
+    visualize_image_grid(bottom_all, nrow=8)
+"""
+    
 
 
 def visualize(data, dataset, opts):
     regressor_output = data.encodings.detach().cpu()
     
     on_manifold = regressor_output[:,0]
-    off_manifold = regressor_output[:,1]
+    off_manifold = -regressor_output[:,1]
+    combined = on_manifold + off_manifold
 
     print("On manifold histogram")
     plt.hist(on_manifold.numpy(), bins=100, density=True)
@@ -74,26 +92,41 @@ def visualize(data, dataset, opts):
     plt.show()
 
     print("On manifold")
-    view_top_and_bottom(dataset, on_manifold)
+    view_top_and_bottom(dataset, on_manifold, num_each=256, nrow=16)
     print("Off manifold")
-    view_top_and_bottom(dataset, off_manifold)
+    view_top_and_bottom(dataset, off_manifold, num_each=256, nrow=16)
+    print("Combined")
+    view_top_and_bottom(dataset, combined, num_each = 256, nrow = 16)
 
 
 def visualize_compare(d1, d2, opts):
     r1 = d1.encodings.detach().cpu().numpy()
     r2 = d2.encodings.detach().cpu().numpy()
+
+    label1_on = 'Cifar On-manifold'
+    label2_on = 'Mnist On-manifold'
+    label1_off = 'Cifar off-manifold'
+    label2_off = 'Mnist off-manifold'
+    label1_combined = 'Cifar combined'
+    label2_combined = 'Mnist combined'
     
-    plt.hist(r1[:,0], bins=100, density=True, label='d1_on')
-    plt.hist(r2[:,0], bins=100, density=True, label='d2_on')
-    plt.title("On-manifold")
-    plt.legend(loc='upper right')
+    
+    plt.hist(r1[:,0], bins=100, density=True, alpha=0.5, label=label1_on)
+    plt.hist(r2[:,0], bins=100, density=True, alpha=0.5, label=label2_on)
+    plt.title("Cifar/MNIST On-manifold")
+    plt.legend(loc='upper left')
     plt.show()
 
-    plt.hist(-r1[:,1], bins=100, density=True, label='d1_off')
-    plt.hist(-r2[:,1], bins=100, density=True, label='d2_off')
-    plt.title("Off-manifold")
-    plt.legend(loc='upper right')
+    plt.hist(-r1[:,1], bins=100, density=True, alpha=0.5, label=label1_off)
+    plt.hist(-r2[:,1], bins=100, density=True, alpha=0.5, label=label2_off)
+    plt.title("Cifar/MNIST Off-manifold")
+    plt.legend(loc='upper left')
     plt.show()
 
-    
+    plt.hist(r1[:,0]-r1[:,1], bins=100, density=True, alpha=0.5, label=label1_combined)
+    plt.hist(r2[:,0]-r2[:,1], bins=100, density=True, alpha=0.5, label=label2_combined)
+    plt.title("Cifar/MNIST Combined Scores")
+    plt.legend(loc='upper left')
+    plt.show()
+   
 
