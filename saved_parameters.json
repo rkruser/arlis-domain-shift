@@ -28,7 +28,7 @@
         "stylegan_generator": true,
         "class_conditioned_generator": true,
         "num_conditioned_classes": 10,
-        "load_generator_from": "/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl",
+        "load_generator_from": "/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl",
         "load_generator_external_opts": {
             "classname": "stylegan2-ada-cifar10",
             "name": "cifar_pretrained_stylegan",
@@ -53,7 +53,7 @@
             "dataset": "cifar10"
         },
         "stylegan_generator": true,
-        "load_generator_from": "/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl",
+        "load_generator_from": "/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl",
         "load_generator_external_opts": {
             "classname": "stylegan2-ada-cifar10",
             "name": "cifar_pretrained_stylegan",
@@ -75,7 +75,7 @@
     "cifar_stylegan_calculate_w_jacobians": {
         "stylegan_w_jacobians": true,
         "stylegan_generator": true,
-        "load_generator_from": "/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl",
+        "load_generator_from": "/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl",
         "load_generator_external_opts": {
             "classname": "stylegan2-ada-cifar10",
             "name": "cifar_pretrained_stylegan",

@@ -256,7 +256,7 @@ def normalize_dataset(data): #how does this interact with memory?
 
 
 def test1():
-    dset = get_dataset(dataset='cifar10', dataset_folder='/fs/vulcan-datasets/cifar-10-python', train=True, download=False)
+    dset = get_dataset(dataset='cifar10', dataset_folder='/fs/vulcan-datasets/CIFAR', train=True, download=False)
     print(dset[0])
     print(len(dset))
 
