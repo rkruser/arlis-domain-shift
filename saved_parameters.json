@@ -43,9 +43,9 @@
             }
         },
         "training_opts": {
-            "n_epochs": 5,
+            "n_epochs": 50,
             "print_every": 100,
-            "checkpoint_every": 1
+            "checkpoint_every": 10
         }
     },
     "cifar_stylegan_invert_dataset": {
@@ -96,9 +96,12 @@
             }
         },
         "training_opts": {
-            "n_epochs": 5,
+            "n_epochs": 50,
             "print_every": 100,
-            "checkpoint_every": 1
+            "checkpoint_every": 10,
+            "tracking_opts":{
+                "savefile": "w_regressor_train_metrics.pkl"
+            }
         }
     },
     "cifar_stylegan_train_full_regressor": {
@@ -116,10 +119,10 @@
             }
         },
         "training_opts": {
-            "n_epochs": 5,
+            "n_epochs": 50,
             "print_every": 100,
             "batch_size": 128,
-            "checkpoint_every": 1
+            "checkpoint_every": 10
         }
     },
     "cifar_stylegan_apply_regressor_cifar_train": {
