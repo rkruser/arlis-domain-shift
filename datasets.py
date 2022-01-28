@@ -151,7 +151,7 @@ class DatasetWrapper(torch.utils.data.Dataset):
 # What to do about collate_fn method?
 class SavedTensorDataset(torch.utils.data.Dataset):
     def __init__(self, tensorfile):
-        self.data = torch.load(tensorfile, map_location='cpu')
+        self.data = torch.load(tensorfile, map_location='cuda:0')
         self.keys = self.data.keys()
         for key in self.data:
             if not key.startswith('_'):
