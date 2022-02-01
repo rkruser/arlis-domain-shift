@@ -141,6 +141,25 @@
         },
         "parallelize_across_all": false
     },
+    "cifar_stylegan_apply_regressor_cifar100_train": {
+        "regressor_output_name": "regressor_cifar100_train_output.pth",
+        "dataset_opts": {
+            "dataset": "cifar100",
+            "train": true,
+            "dataset_folder": "/fs/vulcan-datasets/"
+        },
+        "parallelize_across_all": false
+    },
+    "cifar_stylegan_apply_regressor_cifar100_test": {
+        "regressor_output_name": "regressor_cifar100_test_output.pth",
+        "dataset_opts": {
+            "dataset": "cifar100",
+            "train": false,
+            "dataset_folder": "/fs/vulcan-datasets/"
+        },
+        "parallelize_across_all": false
+    },
+
     "cifar_stylegan_apply_regressor_mnist_train": {
         "regressor_output_name": "regressor_mnist_train_output.pth",
         "dataset_opts": {
@@ -197,5 +216,16 @@
         "visualize_comparison": true,
         "comparison_data": "regressor_mnist_train_output.pth"
     },
+    "cifar_stylegan_cifar100_compare": {
+        "data_to_visualize": "regressor_cifar_train_output.pth",
+        "visualize_comparison": true,
+        "comparison_data": "regressor_cifar100_train_output.pth"
+    },
+    "cifar_stylegan_cifar100_compare_test": {
+        "data_to_visualize": "regressor_cifar_test_output.pth",
+        "visualize_comparison": true,
+        "comparison_data": "regressor_cifar100_test_output.pth"
+    },
+
     "dummy_parameter": {}
 }
