@@ -441,18 +441,18 @@ def view_jacobian_histogram():
     
     
     
-#     reverse_jacobian_data = torch.load('./generated/custom_encodings/cifar_encoder_logprobs_reverse.pth')
+    reverse_jacobian_data = torch.load('./generated/custom_encodings/cifar_encoder_logprobs_reverse.pth')
     
-#     print("Total logprob histograms reverse (z to e)")
-#     total_reverse_0 = reverse_jacobian_data['class_0_log_jacob_re']+reverse_jacobian_data['class_0_priors_re']
-#     total_reverse_1 = reverse_jacobian_data['class_1_log_jacob_re']+reverse_jacobian_data['class_1_priors_re']
-#     total_reverse_fake_0 = reverse_jacobian_data['fake_class_0_log_jacob_re']+reverse_jacobian_data['fake_class_0_priors_re']    
-#     plt.hist(total_reverse_0.cpu().numpy(), bins=50, density=True, alpha=1)
-#     plt.show()
-#     plt.hist(total_reverse_1.cpu().numpy(), bins=50, density=True, alpha=1)
-#     plt.show()
-#     plt.hist(total_reverse_fake_0.cpu().numpy(), bins=50, density=True, alpha=1)
-#     plt.show()     
+    print("Total logprob histograms reverse (z to e)")
+    total_reverse_0 = reverse_jacobian_data['class_0_log_jacob_re']+reverse_jacobian_data['class_0_priors_re']
+    total_reverse_1 = reverse_jacobian_data['class_1_log_jacob_re']+reverse_jacobian_data['class_1_priors_re']
+    total_reverse_fake_0 = reverse_jacobian_data['fake_class_0_log_jacob_re']+reverse_jacobian_data['fake_class_0_priors_re']    
+    plt.hist(total_reverse_0.cpu().numpy(), bins=50, density=True, alpha=1)
+    plt.show()
+    plt.hist(total_reverse_1.cpu().numpy(), bins=50, density=True, alpha=1)
+    plt.show()
+    plt.hist(total_reverse_fake_0.cpu().numpy(), bins=50, density=True, alpha=1)
+    plt.show()     
         
         
         
