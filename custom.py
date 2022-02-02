@@ -13,6 +13,140 @@ from models import load_torch_class
 from model_functions import jacobian, log_priors
 
 
+
+def train_linear_encoder():
+    # Load cifar images into [0,1] range
+    dataset_folder = '/fs/vulcan-datasets/CIFAR'
+    im_transform = tv.transforms.ToTensor()
+    dataset = tv.datasets.CIFAR10(dataset_folder, train=True, transform=im_transform, target_transform=None, download=False)
+    dataloader =  torch.utils.data.DataLoader(dataset, 
+                                              batch_size = 256, 
+                                              shuffle=True,  
+                                              pin_memory=True)
+
+    encoder = torch.nn.Linear(3072, 512).cuda()
+    decoder = torch.nn.Linear(512, 3072).cuda()
+    lossfunc = torch.nn.BCELoss()
+    encoder_optim = torch.optim.Adam(encoder.parameters())
+    decoder_optim = torch.optim.Adam(decoder.parameters())
+
+    count = 0
+    for n in range(50):
+        print("Epoch", n)
+        for batch in dataloader:
+            ims = batch[0]
+            ims = ims.cuda().reshape(ims.size(0), 3072)
+
+            reconstruction = torch.sigmoid(decoder(encoder(ims)))
+            loss = lossfunc(reconstruction, ims)
+
+            encoder.zero_grad()
+            decoder.zero_grad()
+            loss.backward()
+            encoder_optim.step()
+            decoder_optim.step()
+
+            if count%10 == 0:
+                print(count, loss.item())
+            count += 1
+            
+            
+    pickle.dump(encoder,open('./models/small_linear_cifar10_encoder/encoder.pkl','wb'))
+    pickle.dump(decoder,open('./models/small_linear_cifar10_encoder/decoder.pkl','wb'))
+            
+        
+
+        
+def train_classifying_encoder():
+    # Load cifar images into [0,1] range
+    dataset_folder = '/fs/vulcan-datasets/CIFAR'
+    im_transform = tv.transforms.ToTensor()
+    dataset = tv.datasets.CIFAR10(dataset_folder, train=True, transform=im_transform, target_transform=None, download=False)
+    dataloader =  torch.utils.data.DataLoader(dataset, 
+                                              batch_size = 256, 
+                                              shuffle=True,  
+                                              pin_memory=True)
+
+    
+    from models import NetE32, weights_init
+    from utils import EasyDict as edict
+    
+    opt = edict(nc=3, ndf=128, nz=512)
+    encoder = NetE32(opt).cuda()
+    encoder.apply(weights_init)
+
+    last_layer = nn.Linear(512, 10).cuda()
+    last_layer.apply(weights_init)
+    
+
+
+    #encoder, last_layer = pickle.load(open('./models/small_linear_cifar10_encoder/classifier_encoder.pkl','rb'))
+    
+    
+    encoder.train()
+    last_layer.train()
+    
+    lossfunc = torch.nn.CrossEntropyLoss()
+    encoder_optim = torch.optim.Adam(encoder.parameters(), weight_decay=0.01)
+    last_layer_optim = torch.optim.Adam(last_layer.parameters(), weight_decay=0.01)
+
+    count = 0
+    for n in range(50):
+        print("Epoch", n)
+        for batch in dataloader:
+            ims, labels = batch
+            ims = ims.cuda()
+            labels = labels.cuda()
+
+            loss = lossfunc(last_layer(encoder(ims)), labels)
+
+            encoder.zero_grad()
+            last_layer.zero_grad()
+            loss.backward()
+            encoder_optim.step()
+            last_layer_optim.step()
+
+            if count%10 == 0:
+                print(count, loss.item())
+            count += 1
+
+            
+    pickle.dump((encoder,last_layer), open('./models/small_linear_cifar10_encoder/classifier_encoder.pkl','wb'))
+        
+ 
+def test_classifying_encoder():
+    encoder, last_layer = pickle.load(open('./models/small_linear_cifar10_encoder/classifier_encoder.pkl','rb'))
+    dataset_folder = '/fs/vulcan-datasets/CIFAR'
+    im_transform = tv.transforms.ToTensor()
+    dataset = tv.datasets.CIFAR10(dataset_folder, train=False, transform=im_transform, target_transform=None, download=False)
+    dataloader =  torch.utils.data.DataLoader(dataset, 
+                                              batch_size = 256, 
+                                              shuffle=True,  
+                                              pin_memory=True)
+
+    encoder.eval()
+    last_layer.eval()
+    
+    batch_correct = 0
+    total = 0
+    for batch in dataloader:
+        ims, labels = batch
+        ims = ims.cuda()
+        labels = labels.cuda()
+        
+        logits = last_layer(encoder(ims))
+        predictions = torch.nn.functional.softmax(logits, dim=1)
+        predicted_labels = torch.argmax(predictions,1)
+        
+        batch_correct += (predicted_labels == labels).sum()
+        total += ims.size(0)
+
+
+    print("Accuracy = {}%".format(100*(batch_correct / total)))
+        
+        
+    
+
 def sample_cifar_stylegan():
     encoder = pickle.load(open('./models/small_linear_cifar10_encoder/encoder.pkl','rb'))
     
@@ -72,17 +206,47 @@ def view_samples():
     print(data['encodings'].size())
     
     
-#     encoder = pickle.load(open('./models/small_linear_cifar10_encoder/encoder.pkl','rb'))
-#     images_to_encode = data['images'].cuda()
-#     images_to_encode = ((images_to_encode+1)/2).clamp(0,1)
-#     new_encodings = []
-#     for batch in torch.chunk(images_to_encode, 50000//256):
-#         new_encoding = encoder(batch.view(-1,3072))
-#         new_encodings.append(new_encoding)
-#     all_new = torch.cat(new_encodings)
-#     data['encodings'] = all_new.detach().cpu()
-#     torch.save(data,'./generated/custom_encodings/cifar_class_0_encoded.pth')
-#     sys.exit()
+    encoder, _ = pickle.load(open('./models/small_linear_cifar10_encoder/classifier_encoder.pkl','rb'))
+    encoder.eval()
+    images_to_encode = data['images'].cpu()
+    images_to_encode = ((images_to_encode+1)/2).clamp(0,1)
+    new_encodings = []
+    for i,batch in enumerate(torch.chunk(images_to_encode, 50000//256+1)):
+        print(i)
+        batch = batch.cuda()
+        new_encoding = encoder(batch)
+        new_encodings.append(new_encoding.detach().cpu())
+    all_new = torch.cat(new_encodings).detach().cpu()
+    
+    
+    ###
+    #Whitening
+    ###
+    from scipy.linalg import schur
+    
+    all_new_numpy = all_new.detach().cpu().numpy()
+    all_new_mean = all_new_numpy.mean(0)
+    all_new_centered = all_new_numpy - all_new_mean
+    all_new_cov = np.dot(all_new_centered.T, all_new_centered) / len(all_new_centered)
+    T, Z = schur(all_new_cov)
+    #print(T.diagonal())
+    #print(T.diagonal().min(), T.diagonal().max())
+    T_white = np.eye(len(T), dtype=np.float32)
+    np.fill_diagonal(T_white, np.abs(T.diagonal())**(-1/2))
+    all_new_zca_conditioner = np.dot(Z, T_white, Z.T)
+    print("Type", all_new_zca_conditioner.dtype)
+    
+    all_new_zca_whitened = np.dot(all_new_centered, all_new_zca_conditioner)
+    all_new = torch.from_numpy(all_new_zca_whitened)
+    data['zca_matrix'] = torch.from_numpy(all_new_zca_conditioner)
+    data['mean'] = torch.from_numpy(all_new_mean)
+    #################
+    
+    
+    data['classifier_encodings'] = all_new
+    
+    torch.save(data,'./generated/custom_encodings/cifar_class_0_encoded.pth')
+    sys.exit()
     
     
     
@@ -142,17 +306,20 @@ def train_bidirectional():
 #         nn.Linear(1024,512)
 #     ).cuda()
 
-
+#     from models import weights_init
+    #z_to_encodings.apply(weights_init)
+    #encodings_to_z.apply(weights_init)
+    
     print("loading")
-    z_to_encodings = pickle.load(open('./models/small_linear_cifar10_encoder/z_to_e.pkl','rb')).cuda()
-    encodings_to_z = pickle.load(open('./models/small_linear_cifar10_encoder/e_to_z.pkl','rb')).cuda()
+    z_to_encodings = pickle.load(open('./models/small_linear_cifar10_encoder/z_to_e_classifier_2.pkl','rb')).cuda()
+    encodings_to_z = pickle.load(open('./models/small_linear_cifar10_encoder/e_to_z_classifier_2.pkl','rb')).cuda()
     
     
     
 
     data = torch.load('./generated/custom_encodings/cifar_class_0_encoded.pth')    
     z_values = data['z_values'].cuda()
-    encodings = data['encodings'].cuda()
+    encodings = data['classifier_encodings'].cuda()
     
     dataset = torch.utils.data.TensorDataset(z_values, encodings)
     dataloader = torch.utils.data.DataLoader(dataset, 
@@ -164,13 +331,13 @@ def train_bidirectional():
     
     lossfunc = torch.nn.MSELoss()
     
-    z_to_e_optim = torch.optim.Adam(z_to_encodings.parameters())
-    e_to_z_optim = torch.optim.Adam(encodings_to_z.parameters())  
+    z_to_e_optim = torch.optim.Adam(z_to_encodings.parameters(), lr=0.00001)
+    e_to_z_optim = torch.optim.Adam(encodings_to_z.parameters(), lr=0.00001)  
     
     lmbda = 0.25
     
     alternator = 0
-    for n in range(50):
+    for n in range(100):
         print("Epoch", n)
         for i, batch in enumerate(dataloader):
             z_batch, e_batch = batch
@@ -194,14 +361,14 @@ def train_bidirectional():
                 e_to_z_optim.step()
 
 
-            if i%100 == 0:
+            if i%100 == 0 or i%101 == 0:
                 print(i, alternator, loss.item())
                 
             alternator = 1-alternator
 
 
-    pickle.dump(z_to_encodings, open('./models/small_linear_cifar10_encoder/z_to_e.pkl','wb'))
-    pickle.dump(encodings_to_z, open('./models/small_linear_cifar10_encoder/e_to_z.pkl','wb'))    
+    pickle.dump(z_to_encodings, open('./models/small_linear_cifar10_encoder/z_to_e_classifier_2.pkl','wb'))
+    pickle.dump(encodings_to_z, open('./models/small_linear_cifar10_encoder/e_to_z_classifier_2.pkl','wb'))    
 
 
 
@@ -210,18 +377,20 @@ def show_bidirectional_results():
     z_to_encodings = pickle.load(open('./models/small_linear_cifar10_encoder/z_to_e.pkl','rb')).cuda()
     encodings_to_z = pickle.load(open('./models/small_linear_cifar10_encoder/e_to_z.pkl','rb')).cuda()
     
-    encoder = pickle.load(open('./models/small_linear_cifar10_encoder/encoder.pkl','rb'))
-    decoder = pickle.load(open('./models/small_linear_cifar10_encoder/decoder.pkl','rb'))
+    #encoder, _ = pickle.load(open('./models/small_linear_cifar10_encoder/classifier_encoder.pkl','rb'))
+    encoder = pickle.load(open('./models/small_linear_cifar10_encoder/encoder.pkl','rb'))    
+    encoder.eval()
+    #decoder = pickle.load(open('./models/small_linear_cifar10_encoder/decoder.pkl','rb'))
 
     data = torch.load('./generated/custom_encodings/cifar_class_0_encoded.pth')
     
-    first_64_images = ((data['images'][:64]+1)/2).clamp(0,1)
-    view_tensor_images(first_64_images)
+#     first_64_images = ((data['images'][:64]+1)/2).clamp(0,1)
+#     view_tensor_images(first_64_images)
     
-    first_64_z = data['z_values'][:64].cuda()
-    first_64_predicted_e = z_to_encodings(first_64_z)
-    first_64_predicted_decoded = torch.sigmoid(decoder(first_64_predicted_e)).reshape(-1,3,32,32)
-    view_tensor_images(first_64_predicted_decoded)
+#     first_64_z = data['z_values'][:64].cuda()
+#     first_64_predicted_e = z_to_encodings(first_64_z)
+#     first_64_predicted_decoded = torch.sigmoid(decoder(first_64_predicted_e)).reshape(-1,3,32,32)
+#     view_tensor_images(first_64_predicted_decoded)
     
     
     
@@ -236,19 +405,26 @@ def show_bidirectional_results():
     #permutation = torch.randperm(len(dataset))
     while len(first_64_real_class_0) < 64:
         im, label = dataset[pos]
-        if label == 1:
+        if label == 0:
             first_64_real_class_0.append(im)
         pos += 1
     first_64_real_class_0 = torch.stack(first_64_real_class_0)#.reshape(-1,3072).cuda()
     view_tensor_images(first_64_real_class_0)
     first_64_real_encoded = encoder(first_64_real_class_0.reshape(-1,3072).cuda())
+    #first_64_real_encoded = encoder(first_64_real_class_0.cuda())
+    
+#     ###########3
+#     zca_matrix = data['zca_matrix'].cuda()
+#     data_mean = data['mean'].cuda()
+#     first_64_real_encoded = torch.mm(first_64_real_encoded-data_mean, zca_matrix)
+    
     
     predicted_z = encodings_to_z(first_64_real_encoded) #nonlinear map back to z-space
     class_constant = torch.zeros(10, device='cuda')
     class_constant[0] = 1
     classes = class_constant.repeat(64,1)
     
-    cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda() 
+    cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()
     w_values = cifar_stylegan_net.mapping(predicted_z, classes)
     image_outputs = cifar_stylegan_net.synthesis(w_values, noise_mode='const', force_fp32=True)
     image_outputs = ((image_outputs+1)/2).clamp(0,1)
@@ -484,6 +660,10 @@ def run_custom_command(command):
         jacobians_other_direction()
     elif command == 'view_jacobian_histogram':
         view_jacobian_histogram()
+    elif command == 'train_classifying_encoder':
+        train_classifying_encoder()
+    elif command == 'test_classifying_encoder':
+        test_classifying_encoder()
 
 
 
