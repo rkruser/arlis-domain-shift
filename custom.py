@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 
 
 from models import load_torch_class
+from model_functions import jacobian, log_priors
 
 
 def sample_cifar_stylegan():
@@ -252,8 +253,221 @@ def show_bidirectional_results():
     image_outputs = cifar_stylegan_net.synthesis(w_values, noise_mode='const', force_fp32=True)
     image_outputs = ((image_outputs+1)/2).clamp(0,1)
     view_tensor_images(image_outputs)
-    
+ 
 
+# def apply_forward_jacobian(inputs, outputs):
+#     indices = torch.arange(len(inputs))
+#     acc = []
+#     for i, ch in enumerate(torch.chunk(indices, len(inputs)//64 + 1)):
+#         print("Jacobians", i)
+#         logjacobians = -jacobian(inputs[ch], outputs[ch])
+#         acc.append(logjacobians)
+        
+#     return torch.cat(acc)
+        
+def jacobians():
+    dataset_folder = '/fs/vulcan-datasets/CIFAR'
+    im_transform = tv.transforms.ToTensor()
+    dataset = tv.datasets.CIFAR10(dataset_folder, train=True, transform=im_transform, target_transform=None, download=False)
+    real_class_0 = []
+    class_0_inds = []
+    real_class_1 = []
+    class_1_inds = []
+    pos = 0
+    #permutation = torch.randperm(len(dataset))
+    while min(len(real_class_0),len(real_class_1)) < 1000:
+        im, label = dataset[pos]
+        if label == 0:
+            real_class_0.append(im)
+            class_0_inds.append(pos)
+        elif label == 1:
+            real_class_1.append(im)
+            class_1_inds.append(pos)
+        pos += 1
+    real_class_0 = torch.stack(real_class_0).cuda()
+    real_class_1 = torch.stack(real_class_1).cuda()
+    
+    encoder = pickle.load(open('./models/small_linear_cifar10_encoder/encoder.pkl','rb')).cuda()
+    encodings_to_z = pickle.load(open('./models/small_linear_cifar10_encoder/e_to_z.pkl','rb')).cuda()
+    
+    
+    class_0_encoded = encoder(real_class_0.reshape(-1,3072)).detach()
+    class_0_encoded.requires_grad_(True)
+    class_0_inverted = encodings_to_z(class_0_encoded)
+    class_1_encoded = encoder(real_class_1.reshape(-1,3072)).detach()
+    class_1_encoded.requires_grad_(True)
+    class_1_inverted = encodings_to_z(class_1_encoded)
+    
+    
+    
+    class_0_log_jacobians = -jacobian(class_0_encoded,class_0_inverted) #apply_forward_jacobian(class_0_encoded, class_0_inverted)
+    class_1_log_jacobians = -jacobian(class_1_encoded,class_1_inverted) #apply_forward_jacobian(class_1_encoded, class_1_inverted)
+    
+    class_0_priors = log_priors(class_0_inverted)
+    class_1_priors = log_priors(class_1_inverted)
+    
+    
+    
+    data = torch.load('./generated/custom_encodings/cifar_class_0_encoded.pth')    
+    fake_class_0_encodings = data['encodings'][:1000].cuda()
+    fake_class_0_encodings.requires_grad_(True)
+    fake_class_0_inverted = encodings_to_z(fake_class_0_encodings)
+    
+    fake_class_0_log_jacobians = -jacobian(fake_class_0_encodings, fake_class_0_inverted)
+    fake_class_0_priors = log_priors(fake_class_0_inverted)
+    
+    
+    
+    torch.save({'class_0_log_jacob':class_0_log_jacobians, 'class_1_log_jacob':class_1_log_jacobians,
+                'class_0_priors':class_0_priors, 'class_1_priors':class_1_priors, 
+                'class_0_inds':class_0_inds, 'class_1_inds':class_1_inds,
+                'fake_class_0_log_jacob':fake_class_0_log_jacobians, 'fake_class_0_priors':fake_class_0_priors}, 
+               './generated/custom_encodings/cifar_encoder_logprobs.pth')
+    
+    
+def jacobians_other_direction():
+    dataset_folder = '/fs/vulcan-datasets/CIFAR'
+    im_transform = tv.transforms.ToTensor()
+    dataset = tv.datasets.CIFAR10(dataset_folder, train=True, transform=im_transform, target_transform=None, download=False)
+    real_class_0 = []
+    class_0_inds = []
+    real_class_1 = []
+    class_1_inds = []
+    pos = 0
+    #permutation = torch.randperm(len(dataset))
+    while min(len(real_class_0),len(real_class_1)) < 1000:
+        im, label = dataset[pos]
+        if label == 0:
+            real_class_0.append(im)
+            class_0_inds.append(pos)
+        elif label == 1:
+            real_class_1.append(im)
+            class_1_inds.append(pos)
+        pos += 1
+    real_class_0 = torch.stack(real_class_0).cuda()
+    real_class_1 = torch.stack(real_class_1).cuda()
+    
+    encoder = pickle.load(open('./models/small_linear_cifar10_encoder/encoder.pkl','rb')).cuda()
+    encodings_to_z = pickle.load(open('./models/small_linear_cifar10_encoder/e_to_z.pkl','rb')).cuda()
+    z_to_encodings = pickle.load(open('./models/small_linear_cifar10_encoder/z_to_e.pkl','rb')).cuda()
+    
+    class_0_encoded = encoder(real_class_0.reshape(-1,3072))
+    class_0_inverted = encodings_to_z(class_0_encoded).detach()
+    class_0_inverted.requires_grad_(True)
+    class_0_reencoded = z_to_encodings(class_0_inverted)
+
+    
+    class_1_encoded = encoder(real_class_1.reshape(-1,3072))
+    class_1_inverted = encodings_to_z(class_1_encoded).detach()
+    class_1_inverted.requires_grad_(True) 
+    class_1_reencoded = z_to_encodings(class_1_inverted)
+  
+    
+    
+#     class_0_log_jacobians_re = jacobian(class_0_inverted,class_0_reencoded) #no negative since reverse jacobian
+#     class_1_log_jacobians_re = jacobian(class_1_inverted,class_1_reencoded) #no negative since reverse jacobian
+    
+#     class_0_priors_re = log_priors(class_0_inverted)
+#     class_1_priors_re = log_priors(class_1_inverted)
+    
+    
+    
+    data = torch.load('./generated/custom_encodings/cifar_class_0_encoded.pth')    
+    fake_class_0_encodings = data['encodings'][:1000].cuda()
+    fake_class_0_z = data['z_values'][:1000].cuda()
+    fake_class_0_z.requires_grad_(True)
+    fake_class_0_reencoded = z_to_encodings(fake_class_0_z)
+    
+#     fake_class_0_log_jacobians_re = jacobian(fake_class_0_z, fake_class_0_reencoded)
+#     fake_class_0_priors_re = log_priors(fake_class_0_z)
+    
+    
+    class_0_recon_errors = torch.linalg.norm(class_0_encoded-class_0_reencoded,dim=1)**2
+    class_1_recon_errors = torch.linalg.norm(class_1_encoded-class_1_reencoded,dim=1)**2
+    fake_class_0_recon_errors = torch.linalg.norm(fake_class_0_encodings-fake_class_0_reencoded,dim=1)**2
+    print(class_0_recon_errors.size())
+    
+    
+    torch.save({'class_0_recon_errors':class_0_recon_errors, 'class_1_recon_errors':class_1_recon_errors, 
+                'fake_class_0_recon_errors':fake_class_0_recon_errors}, 
+               './generated/custom_encodings/cifar_encoder_recon_errors.pth')
+#     torch.save({'class_0_log_jacob_re':class_0_log_jacobians_re, 'class_1_log_jacob_re':class_1_log_jacobians_re,
+#                 'class_0_priors_re':class_0_priors_re, 'class_1_priors_re':class_1_priors_re, 
+#                 'class_0_inds':class_0_inds, 'class_1_inds':class_1_inds,
+#                 'fake_class_0_log_jacob_re':fake_class_0_log_jacobians_re, 'fake_class_0_priors_re':fake_class_0_priors_re,
+#                 'class_0_recon_errors':class_0_recon_errors, 'class_1_recon_errors':class_1_recon_errors, 
+#                 'fake_class_0_recon_errors':fake_class_0_recon_errors}, 
+#                './generated/custom_encodings/cifar_encoder_logprobs_reverse.pth')
+
+    
+def view_jacobian_histogram():
+#     jacobian_data = torch.load('./generated/custom_encodings/cifar_encoder_logprobs.pth')
+    
+#     total_logprobs_0 = jacobian_data['class_0_log_jacob']+jacobian_data['class_0_priors']
+#     total_logprobs_1 = jacobian_data['class_1_log_jacob']+jacobian_data['class_1_priors']
+#     total_logprobs_fake_0 = jacobian_data['fake_class_0_log_jacob']+jacobian_data['fake_class_0_priors']
+    
+#     print("Total logprob histogram")
+#     plt.hist(total_logprobs_0.cpu().numpy(), bins=50, density=True, alpha=1, label="Airplanes", range=[-2500,-1700])
+#     plt.show()
+#     plt.hist(total_logprobs_1.cpu().numpy(), bins=50, density=True, alpha=1, label="Cars",range=[-2500,-1700])
+#     plt.show()
+#     plt.hist(total_logprobs_fake_0.cpu().numpy(), bins=50, density=True, alpha=1, label="Fake airplanes", range=[-2500,-1700])
+#     #plt.legend(loc='upper left')
+#     plt.show()
+    
+    
+    
+#     print("Prior histogram")
+#     plt.hist(jacobian_data['class_0_priors'].cpu().numpy(), bins=50, density=True, alpha=1)
+#     plt.show()
+#     plt.hist(jacobian_data['class_1_priors'].cpu().numpy(), bins=50, density=True, alpha=1)
+#     plt.show()
+#     plt.hist(jacobian_data['fake_class_0_priors'].cpu().numpy(), bins=50, density=True, alpha=1)
+#     plt.show()  
+    
+    
+    
+#     print("Jacobian histogram")
+#     plt.hist(jacobian_data['class_0_log_jacob'].cpu().numpy(), bins=50, density=True, alpha=1)
+#     plt.show()
+#     plt.hist(jacobian_data['class_1_log_jacob'].cpu().numpy(), bins=50, density=True, alpha=1)
+#     plt.show()
+#     plt.hist(jacobian_data['fake_class_0_log_jacob'].cpu().numpy(), bins=50, density=True, alpha=1)
+#     plt.show()     
+    
+    
+    
+    
+    
+    
+#     reverse_jacobian_data = torch.load('./generated/custom_encodings/cifar_encoder_logprobs_reverse.pth')
+    
+#     print("Total logprob histograms reverse (z to e)")
+#     total_reverse_0 = reverse_jacobian_data['class_0_log_jacob_re']+reverse_jacobian_data['class_0_priors_re']
+#     total_reverse_1 = reverse_jacobian_data['class_1_log_jacob_re']+reverse_jacobian_data['class_1_priors_re']
+#     total_reverse_fake_0 = reverse_jacobian_data['fake_class_0_log_jacob_re']+reverse_jacobian_data['fake_class_0_priors_re']    
+#     plt.hist(total_reverse_0.cpu().numpy(), bins=50, density=True, alpha=1)
+#     plt.show()
+#     plt.hist(total_reverse_1.cpu().numpy(), bins=50, density=True, alpha=1)
+#     plt.show()
+#     plt.hist(total_reverse_fake_0.cpu().numpy(), bins=50, density=True, alpha=1)
+#     plt.show()     
+        
+        
+        
+    recon_losses_data = torch.load('./generated/custom_encodings/cifar_encoder_recon_errors.pth')    
+    
+    print("Reconstruction losses histograms")
+    plt.hist(recon_losses_data['class_0_recon_errors'].detach().cpu().numpy(), bins=50, density=True, alpha=0.5, label="Real airplanes")
+    #plt.show()
+    plt.hist(recon_losses_data['class_1_recon_errors'].detach().cpu().numpy(), bins=50, density=True, alpha=0.5, label="Car ims")
+    #plt.show()
+    plt.hist(recon_losses_data['fake_class_0_recon_errors'].detach().cpu().numpy(), bins=50, density=True, alpha=0.5, label="Stylegan airplanes")
+    #plt.show()       
+    plt.legend()
+    plt.show()
+    
 
 def run_custom_command(command):
     if command == 'sample_cifar_stylegan':
@@ -264,7 +478,80 @@ def run_custom_command(command):
         train_bidirectional()
     elif command == 'show_bidirectional_results':
         show_bidirectional_results()
+    elif command == 'jacobian':
+        jacobians()
+    elif command == 'reverse_jacobians':
+        jacobians_other_direction()
+    elif command == 'view_jacobian_histogram':
+        view_jacobian_histogram()
 
 
 
 
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
