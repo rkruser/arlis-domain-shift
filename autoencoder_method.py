@@ -689,17 +689,17 @@ def visualize_invertible():
 
         print("real")
         view_tensor_images(real_batch)
-        print("fake")
-        view_tensor_images(fake_image_batch)
-        print("reconstructed real")
-        view_tensor_images(reconstructed_real)
-        print("reconstructed fake")
-        view_tensor_images(reconstructed_fake)
+
+#         print("reconstructed real")
+#         view_tensor_images(reconstructed_real)
+#         print("reconstructed fake")
+#         view_tensor_images(reconstructed_fake)
         print("real2stylegan")
         view_tensor_images(real2stylegan)
         print("stylegan2real")
         view_tensor_images(stylegan2real)
-    
+        print("stylegan")
+        view_tensor_images(fake_image_batch)    
 # regularize autoencoder with l2 and domain adversary, and maybe add small amounts of noise
         
 
@@ -732,6 +732,11 @@ def test4():
         x, y = dset[i]
         print(y, x.size(), x.min(), x.max())
     
+
+    
+# Next idea: just train the phi networks and the autoencoder simultaneously
+# Then can ax the adversary and the other stuff
+# (linear layer at end of encoder to help out?)
     
 if __name__ == '__main__':
     #test4()
