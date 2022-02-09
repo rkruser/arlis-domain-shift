@@ -44,7 +44,8 @@ class block_sample_layer(nn.Module):
                  nonlinearity=nn.LeakyReLU(0.2,inplace=True),
                  downsample = None,
                  upsample = None,
-                 nlayers=2, 
+                 nlayers=2,
+                 #omit_last_if_no_dimension_change=True,
                  resblock=True,
                  batchnorm=True, 
                  batchnorm_layer=nn.BatchNorm2d, 
@@ -75,17 +76,20 @@ class block_sample_layer(nn.Module):
                 layers.append(batchnorm_layer(nmaps))
             
         self.last_layer = None
-        if pool and (downsample is not None):
-            self.last_layer = pool_layer(downsample)
-        elif simple_upsample and (upsample is not None):
-            self.last_layer = upsample_layer(scale_factor=upsample)
+        if downsample or upsample or (not resblock):
+            if pool and (downsample is not None):
+                self.last_layer = pool_layer(downsample)
+            elif simple_upsample and (upsample is not None):
+                self.last_layer = upsample_layer(scale_factor=upsample)
+            else:
+                out_maps = None
+                if max_out_maps is not None and (nmaps == max_out_maps):
+                    out_maps = max_out_maps
+                if min_out_maps is not None and (nmaps==min_out_maps):
+                    out_maps = min_out_maps
+                self.last_layer = get_layer(nmaps, out_maps=out_maps, downsample=downsample, upsample=upsample)
         else:
-            out_maps = None
-            if max_out_maps is not None and (nmaps == max_out_maps):
-                out_maps = max_out_maps
-            if min_out_maps is not None and (nmaps==min_out_maps):
-                out_maps = min_out_maps
-            self.last_layer = get_layer(nmaps, out_maps=out_maps, downsample=downsample, upsample=upsample)
+            self.last_layer = nn.Sequential()
             
         self.main_layers = nn.Sequential(*layers)
    
@@ -272,14 +276,65 @@ class Decoder(nn.Module):
         
         
         
-
-        
-        
     def forward(self, x):
         x = x.reshape(x.size(0), 32, 4, 4)
         x = self.main_layers(x)
         x = self.last_layers(x)
         return x
+        
+
+        
+        
+        
+        
+class Phi(nn.Module):
+    def __init__(self, nblocks=4):
+        super().__init__()
+        
+        self.first_layer = nn.Linear(512,1024)
+        
+        layers = []
+        for _ in range(nblocks):
+            layers.append(get_fc_resblock_layer(1024))
+            
+        self.main_layers = nn.Sequential(*layers)
+            
+        self.last_layer = nn.Sequential(
+                            nn.LeakyReLU(0.2,inplace=True),
+                            nn.Linear(1024,512)
+                            )
+        
+    def forward(self, x):
+        x = self.first_layer(x)
+        x = self.main_layers(x)
+        x = self.last_layer(x)
+        return x
+        
+        
+        
+class Phi_regressor(nn.Module):
+    def __init__(self, nblocks=4):
+        super().__init__()
+        
+        self.first_layer = nn.Linear(512,1024)
+        
+        layers = []
+        for _ in range(nblocks):
+            layers.append(get_fc_resblock_layer(1024))
+            
+        self.main_layers = nn.Sequential(*layers)
+            
+        self.last_layer = nn.Sequential(
+                            nn.LeakyReLU(0.2,inplace=True),
+                            nn.Linear(1024,514) #one extra for log prob, one for norm of vector difference
+                            )
+        
+    def forward(self, x):
+        x = self.first_layer(x)
+        x = self.main_layers(x)
+        x = self.last_layer(x)
+        return x        
+        
         
         
 
@@ -296,14 +351,18 @@ def test1():
 
 
 def test2():
-    net = Encoder(32, lean=False, very_lean=False)
+    net = Encoder(32, lean=False, very_lean=True)
     print(net)
-    net = Decoder(32, lean=False, very_lean=False)
+    net = Decoder(32, lean=False, very_lean=True)
+    print(net)
+    
+def test3():
+    net = phi()
     print(net)
     
 
 if __name__ == '__main__':
-    test2()
+    test3()
 
 
 
