@@ -119,7 +119,7 @@ def get_fc_resblock_layer(nmaps):
 
 
 class Encoder(nn.Module):
-    def __init__(self, size, ncolors=3, lean=False, very_lean=False, layer_kwargs=None):
+    def __init__(self, size, ncolors=3, lean=False, very_lean=False, layer_kwargs=None, add_linear=False):
         super().__init__()
         
         assert((size&(size-1) == 0) and size != 0) # Check if exact power of 2
@@ -187,13 +187,19 @@ class Encoder(nn.Module):
 
         self.final_layer = nn.Sequential(self.nonlinearity,
                                          nn.Conv2d(final_nfeats, 32, 1, 1, 0))
-        
+        self.add_linear = add_linear
+        if add_linear:
+            self.linear_postlayer = nn.Linear(512,512)
         
     def forward(self, x):
         x = self.initial_layers(x)
         x = self.main_layers(x)
         x = self.final_layer(x)
-        x = x.reshape(x.size(0),-1)
+        
+        if self.add_linear:
+            x = x.reshape(x.size(0),-1)
+            x = self.linear_postlayer(x)
+        #x = x.reshape(x.size(0),-1)
         #x = x.reshape(x.size(0), -1)
         #x = self.final_fc(x)
         return x
@@ -201,34 +207,11 @@ class Encoder(nn.Module):
 
         
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+   
         
         
 class Decoder(nn.Module):
-    def __init__(self, size, ncolors=3, lean=False, very_lean=False, layer_kwargs=None):
+    def __init__(self, size, ncolors=3, lean=False, very_lean=False, layer_kwargs=None, add_linear=False):
         super().__init__()
         
         assert((size&(size-1) == 0) and size != 0) # Check if exact power of 2
@@ -257,6 +240,11 @@ class Decoder(nn.Module):
         
         
         layers = []
+        
+        self.add_linear = add_linear
+        if add_linear:
+            self.linear_prelayer = nn.Linear(512,512)
+        
         layers.append(nn.ConvTranspose2d(32,2**start_exponent,1,1,0))
         
         for k in range(exponent-2-count):
@@ -274,7 +262,8 @@ class Decoder(nn.Module):
                                    nn.ConvTranspose2d(last_value, next_value, 4, 2, 1)]
                 last_value=next_value
                 #last_exponent -= 1
-                
+        
+        
         
         self.main_layers = nn.Sequential(*layers)
         self.last_layers = nn.Sequential(*last_layers)      
@@ -282,7 +271,9 @@ class Decoder(nn.Module):
         
         
     def forward(self, x):
-        x = x.reshape(x.size(0), 32, 4, 4)
+        if self.add_linear:
+            x = self.linear_prelayer(x)
+            x = x.reshape(x.size(0), 32, 4, 4)
         x = self.main_layers(x)
         x = self.last_layers(x)
         return x
@@ -355,13 +346,13 @@ class Domain_adversary(nn.Module):
     
 class Autoencoder_Model:
     def __init__(self, input_size=32):
-        self.encoder = Encoder(input_size, very_lean=False).cuda()
-        self.decoder = Decoder(input_size, very_lean=False).cuda()
+        self.encoder = Encoder(input_size, very_lean=False, add_linear=True).cuda()
+        self.decoder = Decoder(input_size, very_lean=False, add_linear=True).cuda()
         self.domain_adversary = Domain_adversary().cuda()
         
-        self.encoder_optim = torch.optim.Adam(self.encoder.parameters())
-        self.decoder_optim = torch.optim.Adam(self.decoder.parameters())
-        self.domain_adversary_optim = torch.optim.Adam(self.domain_adversary.parameters())
+        self.encoder_optim = torch.optim.Adam(self.encoder.parameters(), lr=0.0001)
+        self.decoder_optim = torch.optim.Adam(self.decoder.parameters(), lr=0.0001)
+        self.domain_adversary_optim = torch.optim.Adam(self.domain_adversary.parameters(), lr=0.0001)
 
 class Phi_Model:
     def __init__(self):
@@ -441,7 +432,246 @@ def train_autoencoder(model, dataloader, n_epochs):
     
     pickle.dump(model, open('./models/autoencoder/ae_model.pkl','wb'))
     
+
     
+    
+# y=E(x); ||D(y)-x||^2 + ||Phi_inv(y)-z_true||^2 + ||Phi(z_true)-y||^2 + ||Phi(Phi_inv(y))-y||^2 + ||Phi_inv(Phi(z_true))-z_true||^2
+def train_autoencoder_with_phi(model, phi_model, dataloader_real, dataloader_fake, n_iters):
+    #reconstruction_loss = torch.nn.BCEWithLogitsLoss()
+    l2_loss = torch.nn.MSELoss()
+    
+    #reconstruction_loss = torch.nn.L1Loss()
+    adversary_loss = torch.nn.BCEWithLogitsLoss()
+    
+    
+    
+    
+    model.encoder.train()
+    model.decoder.train()
+    model.domain_adversary.train()
+    phi_model.e2z.train()
+    phi_model.z2e.train()
+    
+    real_iter = iter(dataloader_real)
+    fake_iter = iter(dataloader_fake)
+    
+    lmbda = 0.25
+    lmbda_recon = 0.1
+    lmbda_adv = 0.05
+    lmbda_reg = 0.001
+    # note: no sigmoid outside decoder
+    # assume: ims are in [-1,1] roughly
+    
+    phase = 0
+    for current_iter in range(n_iters):
+        total_loss = None
+        loss_string = None
+        if phase == 0:
+            batch = next(fake_iter,None)
+            if batch is None:
+                fake_iter = iter(dataloader_fake)
+                batch = next(fake_iter)
+            
+            z, ims = batch
+            z = z.cuda()
+            ims = ims.cuda()
+            
+            
+            y = model.encoder(ims)
+            noise = 0.0001*torch.randn(y.size(), device=y.device)
+            y = y + noise
+            
+            regularizing_loss = (torch.norm(y.view(z.size(0),-1),dim=1)**2).mean()
+            
+            #Adversary loss
+            predicted_domain = model.domain_adversary(y)
+            adv_loss = adversary_loss(predicted_domain, torch.zeros(y.size(0),device=y.device))
+            
+            # L2 pixel loss + Decoder cycle loss
+            ims_reconstructed = model.decoder(y)
+            ims_target = ims.detach()  
+            recon_loss = l2_loss(ims_reconstructed, ims_target)
+            
+            ims_reconstructed_target = ims_reconstructed.detach()
+            y_repredicted = model.encoder(ims_reconstructed_target)
+            y_target = y.detach()
+            recon_cycle_loss = l2_loss(y_repredicted, y_target)
+            
+            
+            # z2e loss + cycle loss at z
+            z_target = z.detach()
+            y_predicted = phi_model.z2e(z)
+            z_reconstructed = phi_model.e2z(y_predicted)
+            y_target = y.detach()
+            z2e_loss = l2_loss(y_predicted,y_target)
+            z2e_cycle_loss = l2_loss(z_reconstructed, z_target)
+                     
+            
+            
+            # e2z loss + cycle loss at y
+            z_predicted = phi_model.e2z(y)
+            y_reconstructed = phi_model.z2e(z_predicted)
+            z_target = z.detach()
+            e2z_loss = l2_loss(z_predicted, z_target)
+            y_target = y.detach() # all these are probably unnecessary, but won't hurt
+            e2z_cycle_loss = l2_loss(y_reconstructed, y_target)
+            
+            
+            # another reconstruction loss
+            second_recon = model.decoder(y_reconstructed)
+            second_recon_loss = l2_loss(second_recon, ims_target)         
+            
+            
+            total_loss = lmbda_recon*(recon_loss + lmbda*recon_cycle_loss+second_recon_loss) + \
+                        z2e_loss + lmbda*z2e_cycle_loss + \
+                        e2z_loss + lmbda*e2z_cycle_loss +\
+                        lmbda_reg*regularizing_loss - \
+                        lmbda_adv*adv_loss
+            
+            model.encoder.zero_grad()
+            model.decoder.zero_grad()
+            phi_model.e2z.zero_grad()
+            phi_model.z2e.zero_grad()
+            total_loss.backward()
+            model.encoder_optim.step()
+            model.decoder_optim.step()
+            phi_model.e2z_optim.step()
+            phi_model.z2e_optim.step()
+            
+            loss_string = "recon: {0}, recon_cycle: {1}, z2e: {2}, z2e_cycle: {3}, e2z: {4}, e2z_cycle: {5}, second_recon: {6}, adv_loss={7}, reg_loss={8}".format(recon_loss.item(), recon_cycle_loss.item(), z2e_loss.item(), z2e_cycle_loss.item(), e2z_loss.item(), e2z_cycle_loss.item(), second_recon_loss.item(), adv_loss.item(), regularizing_loss.item())
+            
+        elif phase==1:
+            ims = next(real_iter,None)
+            if ims is None:
+                real_iter = iter(dataloader_real)
+                ims = next(real_iter)
+            ims = ims[0]
+            ims = ims.cuda()
+
+            
+            y = model.encoder(ims)
+            noise = 0.0001*torch.randn(y.size(), device=y.device)
+            y = y + noise
+            
+            regularizing_loss = (torch.norm(y.view(z.size(0),-1),dim=1)**2).mean()
+            
+            predicted_domain = model.domain_adversary(y)
+            adv_loss = adversary_loss(predicted_domain, torch.ones(y.size(0),device=y.device))
+            
+            # L2 pixel loss + Decoder cycle loss
+            ims_reconstructed = model.decoder(y)
+            ims_target = ims.detach()
+            ims_reconstructed_target = ims_reconstructed.detach()
+            y_target = y.detach()
+            recon_loss = l2_loss(ims_reconstructed, ims_target)
+            y_repredicted = model.encoder(ims_reconstructed_target)
+            recon_cycle_loss = l2_loss(y_repredicted, y_target)
+            
+    
+            # cycle loss at y
+            z_predicted = phi_model.e2z(y)
+            y_reconstructed = phi_model.z2e(z_predicted)
+            y_target = y.detach()
+            e2z_cycle_loss = l2_loss(y_reconstructed, y_target)
+            
+            # another reconstruction loss
+            second_recon = model.decoder(y_reconstructed)
+            second_recon_loss = l2_loss(second_recon, ims_target)
+            
+            total_loss = lmbda_recon*(recon_loss + lmbda*recon_cycle_loss+second_recon_loss) + \
+                          lmbda*e2z_cycle_loss +\
+                          lmbda_reg*regularizing_loss -\
+                          lmbda_adv*adv_loss
+            
+            model.encoder.zero_grad()
+            model.decoder.zero_grad()
+            phi_model.e2z.zero_grad()
+            phi_model.z2e.zero_grad()
+            total_loss.backward()
+            model.encoder_optim.step()
+            model.decoder_optim.step()
+            phi_model.e2z_optim.step()
+            phi_model.z2e_optim.step()
+            
+            loss_string = "recon: {0}, recon_cycle: {1}, e2z_cycle: {2}, second_recon:{3}, adv_loss: {4}".format(recon_loss.item(), recon_cycle_loss.item(), e2z_cycle_loss.item(), second_recon_loss.item(),adv_loss.item())
+        
+        else:
+            batch = next(fake_iter,None)
+            if batch is None:
+                fake_iter = iter(dataloader_fake)
+                batch = next(fake_iter) 
+                
+            z, ims_fake = batch
+            z = z.cuda()
+            ims_fake = ims_fake.cuda()
+            y_fake = model.encoder(ims_fake).detach()
+            
+            ims_real = next(real_iter,None)
+            if ims_real is None:
+                real_iter = iter(dataloader_real)
+                ims_real = next(real_iter)
+            ims_real = ims_real[0].cuda()
+            y_real = model.encoder(ims_real).detach()
+            
+            l_fake = torch.zeros(ims_fake.size(0),device=ims_fake.device)
+            l_real = torch.ones(ims_real.size(0),device=ims_real.device)
+            
+            y = torch.cat([y_fake, y_real])
+            noise = 0.0001*torch.randn(y.size(), device=y.device)
+            y = y + noise
+            
+            labels = torch.cat([l_fake, l_real])
+            predicted_labels = model.domain_adversary(y)
+            adv_loss = adversary_loss(predicted_labels, labels)
+            
+            model.domain_adversary.zero_grad()
+            adv_loss.backward()
+            model.domain_adversary_optim.step()
+            
+            loss_string = "Adversary loss: {0}".format(adv_loss.item())
+        
+        
+            
+        if ((current_iter+1)%100==0) or ((current_iter+2)%100==0) or ((current_iter+3)%100==0):
+            print(current_iter, phase, loss_string)
+    
+        phase = (phase+1)%3
+    
+    pickle.dump((model,phi_model), open('./models/autoencoder/ae_phi_model_second_recon_adv.pkl','wb'))    
+    
+
+def build_and_train_autoencoder_with_phi():
+    fake_data = torch.load('./models/autoencoder/cifar_class_1_generated.pth')    
+    real_data = torch.load('./models/autoencoder/cifar_real_class_1.pth')['images']
+    
+    real_data = 2*real_data - 1 # put in [-1,1] range with fake samples
+    #print(type(real_data))
+    
+    fake_dataset = torch.utils.data.TensorDataset(fake_data['z_values'],fake_data['images'])
+    real_dataset = torch.utils.data.TensorDataset(real_data)
+    
+    #x, = real_dataset[0]
+    #z2, x2 = fake_dataset[0]
+    #print(x, z2, x2)
+    #print(x.min(), x.max(), x2.min(), x2.max())
+    
+    fake_dataloader = torch.utils.data.DataLoader(fake_dataset,
+                                             batch_size=128,
+                                             shuffle=True,
+                                             drop_last=True)
+    real_dataloader = torch.utils.data.DataLoader(real_dataset,
+                                             batch_size=128,
+                                             shuffle=True,
+                                             drop_last=True)
+    
+    
+    
+    model = Autoencoder_Model()
+    phi_model = Phi_Model()
+    
+    n_iters = 10000
+    
+    train_autoencoder_with_phi(model, phi_model, real_dataloader, fake_dataloader, n_iters)
     
     
     
@@ -458,7 +688,8 @@ class BlendedDataset(torch.utils.data.Dataset):
             return self.d2[((i-1)//2)]
     
     def __len__(self):
-        return 2*min(len(self.d1),len(self.d2))
+        return 2*min(len(self.d1),len(self.d2))    
+
 
 def two_domain_dataset():
     fake_data = torch.load('./models/autoencoder/cifar_class_1_generated.pth')
@@ -508,7 +739,8 @@ def build_and_train_autoencoder():
     
     
     
-def view_tensor_images(t):
+def view_tensor_images(t, scale=True):
+    t = ((t+1)/2).clamp(0,1)
     grid = tv.utils.make_grid(t.detach().cpu())
     grid = grid.permute(1,2,0).numpy()
     plt.imshow(grid)
@@ -548,13 +780,17 @@ def visualize_autoencoder():
     
     
 def encode_samples():
-    model = pickle.load(open('./models/autoencoder/ae_model.pkl','rb'))
+    #model = pickle.load(open('./models/autoencoder/ae_model.pkl','rb'))
+    model = pickle.load(open('./models/autoencoder/ae_phi_model_second_recon_adv.pkl','rb'))[0]
+    
     samples = torch.load('./models/autoencoder/cifar_class_1_generated.pth')
     print(samples.keys())
     #sys.exit()
     
     ims = samples['images']
-    ims = ((ims+1)/2).clamp(0,1) # Maybe clamping isn't the best... investigate in the future
+    
+    #ims = ((ims+1)/2).clamp(0,1) # Maybe clamping isn't the best... investigate in the future
+    
     fake_dataloader = torch.utils.data.DataLoader(ims,
                                      batch_size=128,
                                      shuffle=False,
@@ -568,7 +804,7 @@ def encode_samples():
         encodings = model.encoder(batch).detach().cpu()
         all_samples.append(encodings)
         
-    samples['encodings'] = torch.cat(all_samples)
+    samples['encodings_2'] = torch.cat(all_samples)
     print(samples.keys())
     
     torch.save(samples, './models/autoencoder/cifar_class_1_generated.pth')
@@ -616,20 +852,22 @@ def train_invertible(model, dataloader, n_epochs):
                 
             alternator = 1-alternator
             
-    pickle.dump(model, open('./models/autoencoder/phi_model.pkl','wb'))
+    pickle.dump(model, open('./models/autoencoder/phi_model_second_recon_adv_extended.pkl','wb'))
     
     
 
 def build_and_train_invertible():
-    model = Phi_Model()
+    #model = Phi_Model()
+    model = pickle.load(open('./models/autoencoder/ae_phi_model_second_recon_adv.pkl','rb'))[1]
+    
     data = torch.load('./models/autoencoder/cifar_class_1_generated.pth')
-    dataset = torch.utils.data.TensorDataset(data['z_values'].cuda(), data['encodings'].cuda())
+    dataset = torch.utils.data.TensorDataset(data['z_values'].cuda(), data['encodings_2'].cuda())
     print(len(dataset))
     dataloader = torch.utils.data.DataLoader(dataset,
                                          batch_size=256,
                                          shuffle=True,
                                          drop_last=True)
-    train_invertible(model, dataloader, 100)
+    train_invertible(model, dataloader, 50)
     
     #print(e2z)
 
@@ -637,8 +875,9 @@ def build_and_train_invertible():
 def visualize_invertible():
     fake_class_1 = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['images']
     fake_class_1_codes = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['z_values']
-    fake_class_1 = ((fake_class_1+1)/2).clamp(0,1)
+    #fake_class_1 = ((fake_class_1+1)/2).clamp(0,1)
     real_class_1 = torch.load('./models/autoencoder/cifar_real_class_1.pth')['images']
+    real_class_1 = real_class_1*2-1
     fake_dataloader = torch.utils.data.DataLoader(fake_class_1_codes,
                                          batch_size=64,
                                          shuffle=False,
@@ -652,8 +891,9 @@ def visualize_invertible():
                                      shuffle=False,
                                      drop_last=False)
     
-    encoder_model = pickle.load(open('./models/autoencoder/ae_model.pkl','rb'))
-    phi_model = pickle.load(open('./models/autoencoder/phi_model.pkl','rb'))
+    #encoder_model = pickle.load(open('./models/autoencoder/ae_model.pkl','rb'))
+    phi_model = pickle.load(open('./models/autoencoder/phi_model_second_recon_adv_extended.pkl','rb'))
+    encoder_model = pickle.load(open('./models/autoencoder/ae_phi_model_second_recon_adv.pkl','rb'))[0]
     
     
     with torch.no_grad():
@@ -680,10 +920,11 @@ def visualize_invertible():
         real_encoded = encoder_model.encoder(real_batch.cuda()).reshape(real_batch.size(0),-1)
         real2stylegan_w = cifar_stylegan_net.mapping(phi_model.e2z(real_encoded), classes)
         real2stylegan = cifar_stylegan_net.synthesis(real2stylegan_w, noise_mode='const', force_fp32=True)
-        real2stylegan = ((real2stylegan+1)/2).clamp(0,1)
+        #real2stylegan = ((real2stylegan+1)/2).clamp(0,1)
         real2stylegan = real2stylegan.detach().cpu()
 
-        fake_encoded = phi_model.z2e(fake_batch.cuda()).reshape(fake_batch.size(0),32,4,4).detach()
+        #fake_encoded = phi_model.z2e(fake_batch.cuda()).reshape(fake_batch.size(0),32,4,4).detach()
+        fake_encoded = phi_model.z2e(fake_batch.cuda()).detach()
         stylegan2real = torch.sigmoid(encoder_model.decoder(fake_encoded)).detach().cpu()
 
 
@@ -702,7 +943,72 @@ def visualize_invertible():
         view_tensor_images(fake_image_batch)    
 # regularize autoencoder with l2 and domain adversary, and maybe add small amounts of noise
         
+def visualize_combined_autoencoder():
+    fake_class_1 = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['images']
+    fake_class_1_codes = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['z_values']
+    real_class_1 = torch.load('./models/autoencoder/cifar_real_class_1.pth')['images']
+    real_class_1 = real_class_1*2-1
+    fake_dataloader = torch.utils.data.DataLoader(fake_class_1_codes,
+                                         batch_size=64,
+                                         shuffle=False,
+                                         drop_last=False)
+    fake_image_dataloader = torch.utils.data.DataLoader(fake_class_1,
+                                     batch_size=64,
+                                     shuffle=False,
+                                     drop_last=False)
+    real_dataloader = torch.utils.data.DataLoader(real_class_1,
+                                     batch_size=64,
+                                     shuffle=False,
+                                     drop_last=False)
+    
+    encoder_model, phi_model = pickle.load(open('./models/autoencoder/ae_phi_model_second_recon_adv.pkl','rb'))
+    
+    
+    with torch.no_grad():
+        encoder_model.encoder.eval()
+        encoder_model.decoder.eval()
+        phi_model.e2z.eval()
+        phi_model.z2e.eval()
 
+        fake_batch = next(iter(fake_dataloader)).cpu()
+        real_batch = next(iter(real_dataloader)).cpu()
+        fake_image_batch = next(iter(fake_image_dataloader)).cpu()
+
+        reconstructed_fake = encoder_model.decoder(encoder_model.encoder(fake_image_batch.cuda())).detach().cpu()
+        reconstructed_real = encoder_model.decoder(encoder_model.encoder(real_batch.cuda())).detach().cpu()
+
+
+
+        from models import load_torch_class
+        cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '/scratch0/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()
+        class_constant = torch.zeros(10, device='cuda')
+        class_constant[1] = 1
+        classes = class_constant.repeat(real_batch.size(0),1)
+
+        real_encoded = encoder_model.encoder(real_batch.cuda()).reshape(real_batch.size(0),-1)
+        real2stylegan_w = cifar_stylegan_net.mapping(phi_model.e2z(real_encoded), classes)
+        real2stylegan = cifar_stylegan_net.synthesis(real2stylegan_w, noise_mode='const', force_fp32=True)
+        #real2stylegan = ((real2stylegan+1)/2).clamp(0,1)
+        real2stylegan = real2stylegan.detach().cpu()
+
+        fake_encoded = phi_model.z2e(fake_batch.cuda()).detach()
+        stylegan2real = encoder_model.decoder(fake_encoded).detach().cpu()
+
+
+        print("real")
+        view_tensor_images(real_batch)
+        print("reconstructed real")
+        view_tensor_images(reconstructed_real)
+        print("reconstructed fake")
+        view_tensor_images(reconstructed_fake)
+        print("real2stylegan")
+        view_tensor_images(real2stylegan)
+        print("stylegan2real")
+        view_tensor_images(stylegan2real)
+        print("stylegan")
+        view_tensor_images(fake_image_batch)  
+    
+    
 def test1():
     layer = get_conv_resblock_downsample_layer(6)
     print(layer)
@@ -746,4 +1052,26 @@ if __name__ == '__main__':
     #encode_samples()
     #build_and_train_invertible()
     visualize_invertible()
-        
+    
+    #build_and_train_autoencoder_with_phi()   
+    #visualize_combined_autoencoder()
+    
+    
+    
+# So far, the thing most proven to work is the adversarial loss
+# All the other losses don't seem to contribute very much
+# regularization may be important though
+# Combined training *may* make a difference for the autoencoder decoding the generator
+# However, combined training seemed to lead to a collapse of the e2z encoder
+# Using stylegan w_space will probably work much better, but adds complexity to the probability calculation
+# e2z has the highest losses by far. Is this due to the gan not being 1 to 1, or is it just normalization differences?
+# think like a scientist
+
+# Next: probability graphs on these new models
+# Try w-space real quick maybe
+# More adversary loss exploration
+# Pick a configuration and do domain shift detection
+    
+    
+    
+    
