@@ -148,17 +148,18 @@ def test_classifying_encoder():
     
 
 def sample_cifar_stylegan():
-    encoder = pickle.load(open('./models/small_linear_cifar10_encoder/encoder.pkl','rb'))
+    #encoder = pickle.load(open('./models/small_linear_cifar10_encoder/encoder.pkl','rb'))
     
     from models import load_torch_class
     
-    cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()
+    #cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()
+    cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '/scratch0/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()
     
     z_values = torch.randn(50000, 512, device='cuda')
     class_constant = torch.zeros(10, device='cuda')
-    class_constant[0] = 1
+    class_constant[1] = 1
 
-    encodings = []
+    #encodings = []
     images = []
     for i, batch in enumerate(torch.chunk(z_values, 50000//128 + 1)):
         classes = class_constant.repeat(batch.size(0),1)
@@ -167,8 +168,8 @@ def sample_cifar_stylegan():
         image_outputs = cifar_stylegan_net.synthesis(w_values, noise_mode='const', force_fp32=True)
         images.append(image_outputs.detach().cpu())
         rescaled_outputs = ((image_outputs+1)/2).clamp(0,1)
-        encoded = encoder(rescaled_outputs.view(-1,3072))
-        encodings.append(encoded.detach().cpu())
+        #encoded = encoder(rescaled_outputs.view(-1,3072))
+        #encodings.append(encoded.detach().cpu())
         
         if i%10 == 0:
             print(i)
@@ -184,10 +185,11 @@ def sample_cifar_stylegan():
         """
         
         
-    all_encodings = torch.cat(encodings)
+    #all_encodings = torch.cat(encodings)
     all_images = torch.cat(images)
 
-    torch.save({'z_values':z_values.cpu(), 'images':all_images, 'encodings':all_encodings}, './generated/custom_encodings/cifar_class_0_encoded.pth')
+    #torch.save({'z_values':z_values.cpu(), 'images':all_images, 'encodings':all_encodings}, './generated/custom_encodings/cifar_class_0_encoded.pth')
+    torch.save({'z_values':z_values.cpu(), 'images':all_images}, './models/autoencoder/cifar_class_1_encoded.pth')
 
 
 
