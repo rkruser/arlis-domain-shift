@@ -346,6 +346,8 @@ class domain_adversary(nn.Module):
         return self.layer2(self.nonlinearity(self.layer1(x)))
         
 
+# regularize autoencoder with l2 and domain adversary, and maybe add small amounts of noise
+        
 
 def test1():
     layer = get_conv_resblock_downsample_layer(6)
