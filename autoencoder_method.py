@@ -335,7 +335,15 @@ class Phi_regressor(nn.Module):
         x = self.last_layer(x)
         return x        
         
+  
+class domain_adversary(nn.Module):
+    def __init__(self):
+        self.layer1 = nn.Linear(512,512)
+        self.nonlinearity = nn.LeakyReLU(0.2,inplace=True)
+        self.layer2 = nn.Linear(512,1)
         
+    def forward(self, x):
+        return self.layer2(self.nonlinearity(self.layer1(x)))
         
 
 
