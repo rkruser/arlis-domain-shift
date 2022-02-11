@@ -362,7 +362,7 @@ class Phi_Model:
         self.e2z_optim = torch.optim.Adam(self.e2z.parameters(),lr=0.0001)
         self.z2e_optim = torch.optim.Adam(self.z2e.parameters(), lr=0.0001)
     
-def train_autoencoder(model, dataloader, n_epochs):
+def train_autoencoder(model, dataloader, n_epochs, use_adversary=True, filename='./models/autoencoder/ae_model_exp_4.pkl'):
     #reconstruction_loss = torch.nn.BCEWithLogitsLoss()
     #reconstruction_loss = torch.nn.MSELoss()
     #reconstruction_loss = torch.nn.L1Loss()
@@ -372,15 +372,24 @@ def train_autoencoder(model, dataloader, n_epochs):
     def reconstruction_loss(x,y):
         return l1_lossfunc(x,y)+l2_lossfunc(x,y)
     
-    adversary_loss = torch.nn.BCEWithLogitsLoss()
+    adversary_loss = None
+    if use_adversary:
+        adversary_loss = torch.nn.BCEWithLogitsLoss()
     
     model.encoder.train()
     model.decoder.train()
-    model.domain_adversary.train()
     
-    lmbda_adv = 1
-    lmbda_reg = 0.0001 #0.25
-    noise_coeff = 0 #0.0001
+    if use_adversary:
+        model.domain_adversary.train()
+    
+    if use_adversary:
+        lmbda_adv = 1
+        lmbda_reg = 0.0001 #0.25
+        noise_coeff = 0 #0.0001
+    else:
+        lmbda_adv = 0
+        lmbda_reg = 0 #0.0001 #0.25
+        noise_coeff = 0 #0.0001
     
     phase = 0
     for epoch in range(n_epochs):
@@ -399,12 +408,15 @@ def train_autoencoder(model, dataloader, n_epochs):
                 # train encoder and decoder
 
 
-                
-                predicted_domains = model.domain_adversary(z)
+                if use_adversary:
+                    predicted_domains = model.domain_adversary(z)
+                    adv_loss = adversary_loss(predicted_domains,y)
+                else:
+                    adv_loss = 0
                 #reconstruction = torch.sigmoid(model.decoder(z))
                 reconstruction = model.decoder(z)
                 
-                adv_loss = adversary_loss(predicted_domains,y)
+                
                 recon_loss = reconstruction_loss(reconstruction, x)
                 regularizing_loss = (torch.norm(z.view(z.size(0),-1),dim=1)**2).mean()
                 total_loss = recon_loss-lmbda_adv*adv_loss+lmbda_reg*regularizing_loss
@@ -412,12 +424,14 @@ def train_autoencoder(model, dataloader, n_epochs):
                 
                 model.encoder.zero_grad()
                 model.decoder.zero_grad()
-                model.domain_adversary.zero_grad()
                 total_loss.backward()
                 model.encoder_optim.step()
                 model.decoder_optim.step()
                 
-                lossinfo = "recon loss = {0}, adv loss = {1}".format(recon_loss.item(), adv_loss.item())
+                if use_adversary:
+                    lossinfo = "recon loss = {0}, adv loss = {1}".format(recon_loss.item(), adv_loss.item())
+                else:
+                    lossinfo = "recon loss = {0}".format(recon_loss.item())
                 #lossinfo = "recon loss = {0}".format(recon_loss.item())
                 
                 
@@ -437,11 +451,12 @@ def train_autoencoder(model, dataloader, n_epochs):
             if i%100 == 0 or i%100 == 1:
                 print(i, lossinfo)
     
-            phase = 1-phase
+            if use_adversary:
+                phase = 1-phase
     
     
     
-    pickle.dump(model, open('./models/autoencoder/ae_model_exp2.pkl','wb'))
+    pickle.dump(model, open(filename,'wb'))
     
 
     
@@ -734,25 +749,67 @@ def two_domain_dataset():
     combined_dataset = BlendedDataset(real_dataset, fake_dataset)
     
     return combined_dataset
+
+def get_cifar_class():
+#     fake_data = torch.load('./models/autoencoder/cifar_class_1_generated.pth')
+#     #z_values = data['z_values']
+#     images = fake_data['images']
+#     #images = ((images+1)/2).clamp(0,1)
+#     fake_labels = torch.ones(len(images))
+#     fake_dataset = torch.utils.data.TensorDataset(images, fake_labels)
     
+    im_transform = tv.transforms.ToTensor()
+    real_data = tv.datasets.CIFAR10('/fs/vulcan-datasets/CIFAR', train=True, transform=im_transform,
+                                   target_transform=None, download=False)
+    
+    filtered_real = []
+    for pt in real_data:
+        x,y = pt
+        if y == 0:
+            filtered_real.append(x)
+            
+    real_class_0 = torch.stack(filtered_real)
+    
+    torch.save({'images':real_class_0}, './models/autoencoder/cifar_real_class_0.pth')
+    
+#     real_class_1 = torch.load('./models/autoencoder/cifar_real_class_1.pth')['images']
+#     real_class_1 = 2*real_class_1 - 1
+#     real_labels = torch.zeros(len(real_class_1))
+#     real_dataset = torch.utils.data.TensorDataset(real_class_1, real_labels)
+    
+    
+    
+#     combined_dataset = BlendedDataset(real_dataset, fake_dataset)
+    
+#     return combined_dataset
+
+
     
 def build_and_train_autoencoder():
-    dataset = two_domain_dataset()
+#    dataset = two_domain_dataset()
+
+    im_transform = tv.transforms.Compose([
+        tv.transforms.ToTensor(),
+        tv.transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))
+    ])
+    dataset = tv.datasets.CIFAR10('/fs/vulcan-datasets/CIFAR', train=True, transform=im_transform,
+                                   target_transform=None, download=False)
+    
     dataloader = torch.utils.data.DataLoader(dataset,
                                              batch_size=128,
                                              shuffle=True,
                                              drop_last=True)
-    
+
     model = Autoencoder_Model()
     #model = pickle.load(open('./models/autoencoder/ae_model_exp2.pkl','rb'))
     #model.encoder_optim.param_groups[0]['lr'] = 0.00001
     #model.decoder_optim.param_groups[0]['lr'] = 0.00001
     #model.domain_adversary_optim[0]['lr'] = 
     
-    print(model.encoder)
-    print(model.decoder)
-    print(model.domain_adversary)
-    train_autoencoder(model, dataloader, 200)
+    #print(model.encoder)
+    #print(model.decoder)
+    #print(model.domain_adversary)
+    train_autoencoder(model, dataloader, 30, use_adversary=False, filename='./models/autoencoder/ae_model_exp_4.pkl')
     
     
     
@@ -799,7 +856,7 @@ def visualize_autoencoder():
     
     
 def encode_samples():
-    model = pickle.load(open('./models/autoencoder/ae_model_exp2.pkl','rb'))
+    model = pickle.load(open('./models/autoencoder/ae_model_exp_4.pkl','rb'))
     #model = pickle.load(open('./models/autoencoder/ae_phi_model_second_recon_adv.pkl','rb'))[0]
     
     samples = torch.load('./models/autoencoder/cifar_class_1_generated.pth')
@@ -823,13 +880,13 @@ def encode_samples():
         encodings = model.encoder(batch).detach().cpu()
         all_samples.append(encodings)
         
-    samples['encodings_exp2'] = torch.cat(all_samples)
+    samples['encodings_exp_4'] = torch.cat(all_samples)
     print(samples.keys())
     
     torch.save(samples, './models/autoencoder/cifar_class_1_generated.pth')
     
 
-def train_invertible(model, dataloader, n_epochs):
+def train_invertible(model, dataloader, n_epochs, filename='./models/autoencoder/phi_model_exp_4.pkl'):
     lossfunc = torch.nn.MSELoss()
     lmbda = 0.1
     
@@ -882,7 +939,7 @@ def train_invertible(model, dataloader, n_epochs):
                 
             alternator = 1-alternator
             
-    pickle.dump(model, open('./models/autoencoder/phi_model_exp2.pkl','wb'))
+    pickle.dump(model, open(filename,'wb'))
     
     
 
@@ -891,13 +948,13 @@ def build_and_train_invertible():
     #model = pickle.load(open('./models/autoencoder/ae_phi_model_second_recon_adv.pkl','rb'))[1]
     
     data = torch.load('./models/autoencoder/cifar_class_1_generated.pth')
-    dataset = torch.utils.data.TensorDataset(data['z_values'].cuda(), data['encodings_exp2'].cuda())
+    dataset = torch.utils.data.TensorDataset(data['z_values'].cuda(), data['encodings_exp_4'].cuda())
     print(len(dataset))
     dataloader = torch.utils.data.DataLoader(dataset,
                                          batch_size=256,
                                          shuffle=True,
                                          drop_last=True)
-    train_invertible(model, dataloader, 200)
+    train_invertible(model, dataloader, 200, filename='./models/autoencoder/phi_model_exp_4.pkl')
     
     #print(e2z)
 
@@ -974,22 +1031,249 @@ def visualize_invertible():
         view_tensor_images(fake_image_batch)   
         
 # regularize autoencoder with l2 and domain adversary, and maybe add small amounts of noise
-  
+
+def visualize_model():
+    ##### Fake batches ########
+    fake_class_1 = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['images']
+    fake_class_1_codes = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['z_values']    
+    fake_dataloader = torch.utils.data.DataLoader(fake_class_1_codes,
+                                         batch_size=64,
+                                         shuffle=False,
+                                         drop_last=False)
+    fake_image_dataloader = torch.utils.data.DataLoader(fake_class_1,
+                                     batch_size=64,
+                                     shuffle=False,
+                                     drop_last=False)    
+
+    fake_batch = next(iter(fake_dataloader)).cpu()
+    fake_image_batch = next(iter(fake_image_dataloader)).cpu()
+    
+    fake_batches = [("fake_class_1", fake_batch, fake_image_batch)]
+    
+    ##### Real batches ########
+    real_class_1 = torch.load('./models/autoencoder/cifar_real_class_1.pth')['images']
+    real_class_1 = real_class_1*2-1    
+    real_dataloader_1 = torch.utils.data.DataLoader(real_class_1,
+                                     batch_size=64,
+                                     shuffle=False,
+                                     drop_last=False)    
+    
+    real_class_0 = torch.load('./models/autoencoder/cifar_real_class_0.pth')['images']
+    real_class_0 = real_class_0*2-1    
+    real_dataloader_0 = torch.utils.data.DataLoader(real_class_0,
+                                     batch_size=64,
+                                     shuffle=False,
+                                     drop_last=False)
+    real_batch_class_0 = next(iter(real_dataloader_0)).cpu()
+    real_batch_class_1 = next(iter(real_dataloader_1)).cpu()
+    
+    real_batches = [("real_class_0",real_batch_class_0), ("real_class_1", real_batch_class_1)]
+    
+    
+    ###### Models ########
+    from models import load_torch_class
+    cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()    
+    phi_model = pickle.load(open('./models/autoencoder/phi_model_exp_4.pkl','rb')) #note exp2
+    model = pickle.load(open('./models/autoencoder/ae_model_exp_4.pkl','rb'))
+    
+    model.encoder.eval()
+    model.decoder.eval()
+    phi_model.e2z.eval()
+    phi_model.z2e.eval()
+    cifar_stylegan_net.eval()
+    
+    with torch.no_grad():
+        ##### Loop over fake batches #####
+        for name, z_codes, fake_ims in fake_batches:
+
+            
+            reconstructed_fake = model.decoder(model.encoder(fake_ims.cuda())).detach().cpu()
+            fake_encoded = phi_model.z2e(fake_batch.cuda()).detach()
+            fake2real = model.decoder(fake_encoded).detach().cpu()
+            
+            print(name, "original")
+            view_tensor_images(fake_ims)
+            print(name, "Reconstructed image through autoencoder")
+            view_tensor_images(reconstructed_fake)
+            print(name, "z_codes decoded via autoencoder")
+            view_tensor_images(fake2real)
+            
+            # Store these somehow
+
+        ##### Loop over real batches #####
+        for name, real_ims in real_batches:
+            # Stylegan beauracracy
+            class_constant = torch.zeros(10, device='cuda')
+            class_constant[1] = 1
+            classes = class_constant.repeat(real_ims.size(0),1)
+            
+            reconstructed_real = model.decoder(model.encoder(real_ims.cuda())).detach().cpu()
+            real_encoded = model.encoder(real_ims.cuda())
+            real2stylegan_w = cifar_stylegan_net.mapping(phi_model.e2z(real_encoded), classes)
+            real2stylegan = cifar_stylegan_net.synthesis(real2stylegan_w, noise_mode='const', force_fp32=True)
+            real2stylegan = real2stylegan.detach().cpu()
+            
+            print(name, "original")
+            view_tensor_images(real_ims)
+            print(name, "Reconstructed image through autoencoder")
+            view_tensor_images(reconstructed_real)
+            print(name, "Encodings decoded via stylegan")
+            view_tensor_images(real2stylegan)            
+
+
     
 def extract_probabilities():
-    phi_model = pickle.load(open('./models/autoencoder/phi_model_exp2.pkl','rb'))
+    real_class_0 = torch.load('./models/autoencoder/cifar_real_class_0.pth')['images'].cpu()
+    real_class_0 = real_class_0*2-1
+    real_class_1 = torch.load('./models/autoencoder/cifar_real_class_1.pth')['images'].cpu()
+    real_class_1 = real_class_1*2-1
     
     
-    # To do: load other classes
-    # obtain encodings
-    # Get jacobians and difference vectors
-    # Plot
+    class_0_dataloader = torch.utils.data.DataLoader(real_class_0,
+                                         batch_size=256,
+                                         shuffle=False,
+                                         drop_last=False)
+    class_1_dataloader = torch.utils.data.DataLoader(real_class_1,
+                                     batch_size=256,
+                                     shuffle=False,
+                                     drop_last=False)
+ 
+
+    fake_class_1 = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['images'].cpu()
+    fake_class_1 = fake_class_1[:real_class_0.size(0)]
+    fake_class_1_dataloader = torch.utils.data.DataLoader(fake_class_1,
+                                     batch_size=256,
+                                     shuffle=False,
+                                     drop_last=False)
+    print(real_class_0[0].min(), real_class_1[0].min(), fake_class_1[0].min())
+    
+    #fake_class_1_codes = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['z_values']
+    
+    phi_model = pickle.load(open('./models/autoencoder/phi_model_exp_4.pkl','rb'))    
+    model = pickle.load(open('./models/autoencoder/ae_model_exp_4.pkl','rb'))
+    model.encoder.eval()
+    model.decoder.eval()
+    phi_model.e2z.eval()
+    phi_model.z2e.eval()
     
     
+
+    from model_functions import jacobian, log_priors
+
+    
+    stats = edict()
+    for name, dataloader in [("class_0", class_0_dataloader), ("class_1", class_1_dataloader),("fake_class_1",fake_class_1_dataloader)]:
+        
+        print(name)
+        e_codes = []
+        e_differences = []
+        e_norms = []
+        logpriors = []
+        z2e_jacobian_probs = []
+        e2z_jacobian_probs = []
+        total_z2e_probs = []
+        total_e2z_probs = []
+        for i, batch in enumerate(dataloader):
+            print("  {0} of {1}".format(i,len(dataloader)))
+            batch = batch.cuda()
+            e_c = model.encoder(batch).detach()
+            e_codes.append(e_c.cpu())
+            
+            e_c.requires_grad_(True)
+            z_predicted = phi_model.e2z(e_c)
+
+            forward_jacobians = -jacobian(e_c, z_predicted).detach().cpu()
+            e2z_jacobian_probs.append(forward_jacobians)
+
+            
+            z_predicted = z_predicted.detach()
+            z_log_priors = log_priors(z_predicted.cpu())
+            logpriors.append(z_log_priors)
+            
+            z_predicted.requires_grad_(True)
+            e_reconstructed = phi_model.z2e(z_predicted)
+            inv_jacobians = jacobian(z_predicted, e_reconstructed).detach().cpu()
+            z2e_jacobian_probs.append(inv_jacobians)
+            
+            diffs = (e_c - e_reconstructed).detach().cpu()
+            e_differences.append(diffs)
+            e_norms.append(torch.norm(diffs,dim=1))
+            
+            
+            total_z2e_probs.append(z_log_priors+inv_jacobians)
+            total_e2z_probs.append(z_log_priors+forward_jacobians)
+        
+        stats[name] = edict()
+        stats[name].e_codes = torch.cat(e_codes)
+        stats[name].e_differences = torch.cat(e_differences)
+        stats[name].e_norms = torch.cat(e_norms)
+        stats[name].log_priors = torch.cat(logpriors)
+        stats[name].z2e_jacobian_probs = torch.cat(z2e_jacobian_probs)
+        stats[name].e2z_jacobian_probs = torch.cat(e2z_jacobian_probs)
+        stats[name].total_z2e_probs = torch.cat(total_z2e_probs)
+        stats[name].total_e2z_probs = torch.cat(total_e2z_probs)
+        
+        
+    
+    # 1. Encode the real data, detach encodings from graph
+    # 2. Run encodings through e2z and z2e, get logprobs and log priors
+    # 3. Plot (3 graphs: jacobian dets, priors, and combined)
+    
+    print(stats.keys())
+    for key in stats:
+        print(stats[key].keys())
+    pickle.dump(stats, open('./models/autoencoder/extracted_info_exp_4.pkl','wb'))
     
     
+def view_extracted_probabilities():
+    # note the off-manifold scores are norms here, not squared norms
+    
+    data = pickle.load(open('./models/autoencoder/extracted_info_exp_4.pkl', 'rb'))
     
     
+    plt.title("logpriors")
+    plt.hist(data.class_1.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake_class_1.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.class_0.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.legend()
+    plt.show()
+    
+    plt.title("e2z jacobians")
+    plt.hist(data.class_1.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake_class_1.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.class_0.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.legend()
+    plt.show()    
+    
+    
+    plt.title("e2z combined")
+    plt.hist(data.class_1.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake_class_1.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.class_0.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.legend()
+    plt.show()       
+    
+    plt.title("z2e jacobians")
+    plt.hist(data.class_1.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake_class_1.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.class_0.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.legend()
+    plt.show()     
+    
+    
+    plt.title("z2e combined")
+    plt.hist(data.class_1.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake_class_1.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.class_0.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.legend()
+    plt.show()     
+    
+    plt.title("difference norms")
+    plt.hist(data.class_1.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake_class_1.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.class_0.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.legend()
+    plt.show()     
     
     
 def visualize_combined_autoencoder():
@@ -1095,18 +1379,32 @@ def test4():
     
 if __name__ == '__main__':
     #test4()
-    #build_and_train_autoencoder()
-    #encode_samples()
+    
+
+    
     #visualize_autoencoder()
-    #build_and_train_invertible()
+    
+    
+
     
     #build_and_train_invertible()
-    visualize_invertible()
+    #visualize_invertible()
+    
+    #get_cifar_class()
     
     #build_and_train_autoencoder_with_phi()   
     #visualize_combined_autoencoder()
     
+#     build_and_train_autoencoder()
+#     encode_samples()    
+#     build_and_train_invertible()    
+#     extract_probabilities()
     
+    
+    view_extracted_probabilities()    
+    visualize_model()
+    
+
     
 # So far, the thing most proven to work is the adversarial loss
 # All the other losses don't seem to contribute very much
