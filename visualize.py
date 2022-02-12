@@ -87,6 +87,7 @@ def visualize(data, dataset, opts):
     off_manifold = -regressor_output[:,1]
     combined = on_manifold + off_manifold
 
+
     print("On manifold histogram")
     plt.hist(on_manifold.numpy(), bins=100, density=True)
     plt.show()
@@ -95,10 +96,13 @@ def visualize(data, dataset, opts):
     plt.hist(-off_manifold.numpy(), bins=100, density=True)
     plt.show()
 
+
     print("On manifold")
     view_top_and_bottom(dataset, on_manifold, num_each=64, nrow=8)
     print("Off manifold")
     view_top_and_bottom(dataset, off_manifold, num_each=64, nrow=8)
+
+
     print("Combined")
     view_top_and_bottom(dataset, combined, num_each = 64, nrow = 8)
 
