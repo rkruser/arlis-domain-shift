@@ -28,7 +28,7 @@
         "stylegan_generator": true,
         "class_conditioned_generator": true,
         "num_conditioned_classes": 10,
-        "load_generator_from": "/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl",
+        "load_generator_from": "/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl",
         "load_generator_external_opts": {
             "classname": "stylegan2-ada-cifar10",
             "name": "cifar_pretrained_stylegan",
@@ -43,9 +43,9 @@
             }
         },
         "training_opts": {
-            "n_epochs": 5,
+            "n_epochs": 50,
             "print_every": 100,
-            "checkpoint_every": 1
+            "checkpoint_every": 10
         }
     },
     "cifar_stylegan_invert_dataset": {
@@ -53,7 +53,7 @@
             "dataset": "cifar10"
         },
         "stylegan_generator": true,
-        "load_generator_from": "/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl",
+        "load_generator_from": "/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl",
         "load_generator_external_opts": {
             "classname": "stylegan2-ada-cifar10",
             "name": "cifar_pretrained_stylegan",
@@ -75,7 +75,7 @@
     "cifar_stylegan_calculate_w_jacobians": {
         "stylegan_w_jacobians": true,
         "stylegan_generator": true,
-        "load_generator_from": "/home/ryen/linuxshared/phd-research/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl",
+        "load_generator_from": "/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl",
         "load_generator_external_opts": {
             "classname": "stylegan2-ada-cifar10",
             "name": "cifar_pretrained_stylegan",
@@ -96,9 +96,12 @@
             }
         },
         "training_opts": {
-            "n_epochs": 5,
+            "n_epochs": 50,
             "print_every": 100,
-            "checkpoint_every": 1
+            "checkpoint_every": 10,
+            "tracking_opts":{
+                "savefile": "w_regressor_train_metrics.pkl"
+            }
         }
     },
     "cifar_stylegan_train_full_regressor": {
@@ -116,10 +119,10 @@
             }
         },
         "training_opts": {
-            "n_epochs": 5,
+            "n_epochs": 50,
             "print_every": 100,
             "batch_size": 128,
-            "checkpoint_every": 1
+            "checkpoint_every": 10
         }
     },
     "cifar_stylegan_apply_regressor_cifar_train": {
@@ -138,6 +141,25 @@
         },
         "parallelize_across_all": false
     },
+    "cifar_stylegan_apply_regressor_cifar100_train": {
+        "regressor_output_name": "regressor_cifar100_train_output.pth",
+        "dataset_opts": {
+            "dataset": "cifar100",
+            "train": true,
+            "dataset_folder": "/fs/vulcan-datasets/"
+        },
+        "parallelize_across_all": false
+    },
+    "cifar_stylegan_apply_regressor_cifar100_test": {
+        "regressor_output_name": "regressor_cifar100_test_output.pth",
+        "dataset_opts": {
+            "dataset": "cifar100",
+            "train": false,
+            "dataset_folder": "/fs/vulcan-datasets/"
+        },
+        "parallelize_across_all": false
+    },
+
     "cifar_stylegan_apply_regressor_mnist_train": {
         "regressor_output_name": "regressor_mnist_train_output.pth",
         "dataset_opts": {
@@ -194,5 +216,16 @@
         "visualize_comparison": true,
         "comparison_data": "regressor_mnist_train_output.pth"
     },
+    "cifar_stylegan_cifar100_compare": {
+        "data_to_visualize": "regressor_cifar_train_output.pth",
+        "visualize_comparison": true,
+        "comparison_data": "regressor_cifar100_train_output.pth"
+    },
+    "cifar_stylegan_cifar100_compare_test": {
+        "data_to_visualize": "regressor_cifar_test_output.pth",
+        "visualize_comparison": true,
+        "comparison_data": "regressor_cifar100_test_output.pth"
+    },
+
     "dummy_parameter": {}
 }

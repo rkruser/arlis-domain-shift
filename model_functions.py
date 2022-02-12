@@ -790,7 +790,7 @@ def jacobian(inputs, outputs, return_jacobian=False):
     #print("Starting QR")
     for k in range(num_points):
         R = np.linalg.qr(gradients[k], mode='r')
-        jacobian_score = -np.log(np.abs(R.diagonal())).sum() #negative because inverting the diagonal elements
+        jacobian_score = -np.log(np.abs(R.diagonal())).sum() #negative because inverting the jacobian
         log_jacobian_determinants[k] = torch.tensor(jacobian_score)
 
     if return_jacobian:

@@ -19,18 +19,20 @@ import datasets
 import build_models
 import train
 import visualize
+import custom
 
 import torch
 
 from datasets import collate_functions
 
 
-modes = ['train_gan', 'sample_gan', 'train_encoder', 'invert_dataset', 'calculate_jacobians', 'train_regressor', 'apply_regressor', 'visualize_data', 'save_parameters', 'view_saved_parameters']
+modes = ['train_gan', 'sample_gan', 'train_encoder', 'invert_dataset', 'calculate_jacobians', 'train_regressor', 'apply_regressor', 'visualize_data', 'save_parameters', 'view_saved_parameters', 'custom']
 parser = argparse.ArgumentParser()
 parser.add_argument('--parameters', type=str, default='{}', help='Global configuration parameters. Argument should be formatted as a python-correct string in quotations, specifying (nested) dictionaries of parameters as desired. Use --show_options to view all possible options for the current specified configuration.')
 parser.add_argument('--basename', type=str, default='model_'+str(datetime.datetime.now()), help='Base name for the current run')
 parser.add_argument('--show_options', action='store_true', help='Show the available options for the current mode and configuration of parameters, and then exit')
 parser.add_argument('--mode', choices=modes, required=True, help='Possible operations')
+parser.add_argument('--custom_func', type=str, default=None, help='The name of the custom function to run, if mode is custom')
 
 parser.add_argument('--print_each', action='store_true', help="Only used with view_saved_parameters. If provided, print each saved set of parameters next to its key.")
 parser.add_argument('--parameter_key', type=str, default=None, help='If used in save_parameters mode, saves the provided value of --parameters to saved_parameters.json under the given key. If used in any other mode, loads the parameters from the given key (and then updates them with any additional --parameters arguments provided)')
@@ -228,6 +230,9 @@ def main(opt):
         sys.exit()
     elif opt.mode == 'view_saved_parameters':
         config.view_parameters(opt.print_each)
+        sys.exit()
+    elif opt.mode == 'custom':
+        custom.run_custom_command(opt.custom_func)
         sys.exit()
 
     all_options = config.collect_options(opt.mode, opt.basename, opt.parameters, opt.parameter_key)

@@ -229,7 +229,7 @@ def train_gan_opts(all_opts, parameters, basename):
     all_opts.training_opts.tracking_opts.savedir=all_opts.model_folder
     all_opts.training_opts.print_keys = ['train/discriminator_loss', 'train/generator_loss']
     all_opts.training_opts.register_meters = ['train/discriminator_loss', 'train/generator_loss']
-    all_opts.training_opts.tracking_opts.savefile='gan_train_metrics.pth'
+    all_opts.training_opts.tracking_opts.savefile='gan_train_metrics.pkl'
     all_opts.training_opts.tracking_opts.logfile='gan_train_log.out'
 
     return all_opts
@@ -268,7 +268,7 @@ def train_encoder_opts(all_opts, parameters, basename):
     all_opts.training_opts.tracking_opts.savedir=all_opts.model_folder
     all_opts.training_opts.print_keys = ['train/encoder_loss']
     all_opts.training_opts.register_meters = ['train/encoder_loss']
-    all_opts.training_opts.tracking_opts.savefile='encoder_train_metrics.pth'
+    all_opts.training_opts.tracking_opts.savefile='encoder_train_metrics.pkl'
     all_opts.training_opts.tracking_opts.logfile='encoder_train_log.out'
 
     return all_opts
@@ -350,7 +350,7 @@ def train_regressor_opts(all_opts, parameters, basename):
     all_opts.training_opts.tracking_opts.savedir=all_opts.model_folder
     all_opts.training_opts.print_keys = ['train/regressor_loss']
     all_opts.training_opts.register_meters = ['train/regressor_loss'] #, 'test/regressor_loss']
-    all_opts.training_opts.tracking_opts.savefile='regressor_train_metrics.pth'
+    all_opts.training_opts.tracking_opts.savefile='regressor_train_metrics.pkl'
     all_opts.training_opts.tracking_opts.logfile='regressor_train_log.out'
 
     return all_opts
@@ -391,7 +391,7 @@ def apply_regressor_opts(all_opts, parameters, basename):
     all_opts.training_opts.tracking_opts.savedir=all_opts.model_folder
     all_opts.training_opts.print_keys = ['train/regressor_loss']
     all_opts.training_opts.register_meters = ['train/regressor_loss'] #, 'test/regressor_loss']
-    all_opts.training_opts.tracking_opts.savefile='regressor_train_metrics.pth'
+    all_opts.training_opts.tracking_opts.savefile='regressor_train_metrics.pkl'
     all_opts.training_opts.tracking_opts.logfile='regressor_train_log.out'
 
     return all_opts

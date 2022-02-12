@@ -151,12 +151,12 @@ class DatasetWrapper(torch.utils.data.Dataset):
 # What to do about collate_fn method?
 class SavedTensorDataset(torch.utils.data.Dataset):
     def __init__(self, tensorfile):
-        self.data = torch.load(tensorfile, map_location='cpu')
+        location = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.data = torch.load(tensorfile, map_location=location)
         self.keys = self.data.keys()
         for key in self.data:
             if not key.startswith('_'):
                 self.data[key] = self.data[key].to(torch.float32) #weirdly necessary
-               
 
     def __len__(self):
         return self.data.data_size()
@@ -208,7 +208,7 @@ def concat_cast(x):
     return torch.cat(x)
 
 
-def get_dataset(dataset='mnist', dataset_folder='/scratch0/datasets', train=True):
+def get_dataset(dataset='mnist', dataset_folder='/scratch0/datasets', train=True, download=True):
     if dataset == 'mnist':
         im_transform = transforms.Compose([
                 transforms.Pad(2),
@@ -217,7 +217,7 @@ def get_dataset(dataset='mnist', dataset_folder='/scratch0/datasets', train=True
                 noise,
                 transforms.Normalize([0.5,0.5,0.5],[0.5,0.5,0.5])]
                 )
-        dataset = torchvision.datasets.MNIST(dataset_folder, train=train, transform=im_transform, target_transform=None, download=True)
+        dataset = torchvision.datasets.MNIST(dataset_folder, train=train, transform=im_transform, target_transform=None, download=download)
         dataset = DatasetWrapper(dataset)
 
     elif dataset == 'cifar10':
@@ -226,7 +226,16 @@ def get_dataset(dataset='mnist', dataset_folder='/scratch0/datasets', train=True
                 noise,
                 transforms.Normalize([0.5,0.5,0.5],[0.5,0.5,0.5])]
                 )
-        dataset = torchvision.datasets.CIFAR10(dataset_folder, train=train, transform=im_transform, target_transform=None, download=True)
+        dataset = torchvision.datasets.CIFAR10(dataset_folder, train=train, transform=im_transform, target_transform=None, download=download)
+        dataset = DatasetWrapper(dataset)
+        
+    elif dataset == 'cifar100':
+        im_transform = transforms.Compose([
+                transforms.ToTensor(),
+                noise,
+                transforms.Normalize([0.5,0.5,0.5],[0.5,0.5,0.5])]
+                )
+        dataset = torchvision.datasets.CIFAR100(dataset_folder, train=train, transform=im_transform, target_transform=None, download=download)
         dataset = DatasetWrapper(dataset)
     elif dataset == 'testdataset':
         return RandomDataset()
@@ -255,6 +264,15 @@ def normalize_dataset(data): #how does this interact with memory?
     return data
 
 
+def test1():
+    dset = get_dataset(dataset='cifar10', dataset_folder='/fs/vulcan-datasets/CIFAR', train=True, download=False)
+    print(dset[0])
+    print(len(dset))
 
 
+def main():
+    test1()
+
+if __name__ == '__main__':
+    main()
 

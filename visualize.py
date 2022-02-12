@@ -112,29 +112,32 @@ def visualize_compare(d1, d2, opts):
     r2 = d2.encodings.detach().cpu().numpy()
 
     label1_on = 'Cifar On-manifold'
-    label2_on = 'Mnist On-manifold'
+    label2_on = 'Cifar 100 On-manifold'
     label1_off = 'Cifar off-manifold'
-    label2_off = 'Mnist off-manifold'
+    label2_off = 'Cifar100 off-manifold'
     label1_combined = 'Cifar combined'
-    label2_combined = 'Mnist combined'
+    label2_combined = 'Cifar100 combined'
     
     
     plt.hist(r1[:,0], bins=100, density=True, alpha=0.5, label=label1_on)
     plt.hist(r2[:,0], bins=100, density=True, alpha=0.5, label=label2_on)
-    plt.title("Cifar/MNIST On-manifold")
+    plt.title("Cifar10/Cifar100 On-manifold")
     plt.legend(loc='upper left')
     plt.show()
 
-    plt.hist(-r1[:,1], bins=100, density=True, alpha=0.5, label=label1_off)
-    plt.hist(-r2[:,1], bins=100, density=True, alpha=0.5, label=label2_off)
-    plt.title("Cifar/MNIST Off-manifold")
+    plt.hist(-r1[:,1], bins=100, density=True, alpha=0.5, label=label1_off, range=[-7,5])
+    plt.hist(-r2[:,1], bins=100, density=True, alpha=0.5, label=label2_off, range=[-7,5])
+#    plt.hist(range=[-7,5])
+    plt.title("Cifar10/Cifar100 Off-manifold")
     plt.legend(loc='upper left')
     plt.show()
 
+    """
     plt.hist(r1[:,0]-r1[:,1], bins=100, density=True, alpha=0.5, label=label1_combined)
     plt.hist(r2[:,0]-r2[:,1], bins=100, density=True, alpha=0.5, label=label2_combined)
     plt.title("Cifar/MNIST Combined Scores")
     plt.legend(loc='upper left')
     plt.show()
+    """
    
 
