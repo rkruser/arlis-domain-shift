@@ -407,12 +407,9 @@ def train_autoencoder(model, dataloader, n_epochs, use_adversary=True):
     
     if use_adversary:
         lmbda_adv = 1
-        lmbda_reg = 0.0001 #0.25
-        noise_coeff = 0 #0.0001
+
     else:
         lmbda_adv = 0
-        lmbda_reg = 0 #0.0001 #0.25
-        noise_coeff = 0 #0.0001
     
     phase = 0
     for epoch in range(n_epochs):
@@ -628,8 +625,106 @@ def get_cifar_class():
 
 
 
+def preprocess_cifar(dataset_dir, save_dir):
+    print("Dataset_dir", dataset_dir)
+    print("Save_dir", save_dir)
+    
+    im_transform = tv.transforms.Compose([
+        tv.transforms.ToTensor(),
+        tv.transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))
+    ])
+    cifar_train = tv.datasets.CIFAR10(dataset_dir, train=True, transform=im_transform,
+                               target_transform=None, download=False)
+    cifar_test = tv.datasets.CIFAR10(dataset_dir, train=False, transform=im_transform,
+                               target_transform=None, download=False)
+    
+    cifar_sorted = {i:{'train':[], 'test':[]} for i in range(10)}
+    for i in range(len(cifar_train)):
+        x, y = cifar_train[i]
+        cifar_sorted[y]['train'].append(x)
+    for i in range(len(cifar_test)):
+        x, y = cifar_test[i]
+        cifar_sorted[y]['test'].append(x)        
+        
+        
+    for key in cifar_sorted:
+        cifar_sorted[key]['train'] = torch.stack(cifar_sorted[key]['train'])
+        cifar_sorted[key]['test'] = torch.stack(cifar_sorted[key]['test'])
+        
+    torch.save(cifar_sorted, os.path.join(save_dir, 'cifar_sorted.pth'))
 
 
+    
+def sample_cifar_stylegan(savedir):
+    #encoder = pickle.load(open('./models/small_linear_cifar10_encoder/encoder.pkl','rb'))
+    
+    from models import load_torch_class
+    
+    #cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()
+    cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '../repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()
+    
+
+    
+    
+    stylegan_sorted = {i:[] for i in range(10)}
+    for const in range(10):
+        print("Class", const)
+        class_constant = torch.zeros(10, device='cuda')
+        class_constant[const] = 1
+
+        z_values = torch.randn(6000, 512, device='cuda')
+        
+        images = []
+        w_vals = []
+        for i, batch in enumerate(torch.chunk(z_values, 6000//128 + 1)):
+            classes = class_constant.repeat(batch.size(0),1)
+            w_values = cifar_stylegan_net.mapping(batch, classes)
+            
+            image_outputs = cifar_stylegan_net.synthesis(w_values, noise_mode='const', force_fp32=True)
+            image_outputs = image_outputs.clamp(-1,1)
+            
+            images.append(image_outputs.detach().cpu())
+            w_vals.append(w_values[:,0,:].cpu())
+            
+
+
+            if i%10 == 0:
+                print(i)
+
+
+            
+        all_z = z_values.cpu()
+        all_w = torch.cat(w_vals)
+        all_ims = torch.cat(images)
+        stylegan_sorted[const] = {
+            'train': {
+                'z_values':all_z[:5000], 
+                'w_values':all_w[:5000], 
+                'images':all_ims[:5000]
+            },
+            'test': {
+                'z_values':all_z[5000:],
+                'w_values':all_w[5000:],
+                'images':all_ims[5000:]
+            }
+        }
+        
+    torch.save(stylegan_sorted, os.path.join(savedir, 'cifar_stylegan_samples.pth'))
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
 class Domain_Adversarial_Dataset(torch.utils.data.Dataset):
     def __init__(self, real, fake, real_classes=None):
@@ -652,8 +747,94 @@ class Domain_Adversarial_Dataset(torch.utils.data.Dataset):
     
     def __len__(self):
         return len(self.real)+len(self.fake)  
-   
 
+    
+class Sorted_Dataset(torch.utils.data.Dataset):
+    def __init__(self, filename, train=True, include_keys=['images'], include_labels=None, keep_separate=False):
+        data = torch.load(filename)
+
+        self.keep_separate = keep_separate
+        self.include_keys = include_keys
+        
+
+        if include_labels is None:
+            include_labels = data.keys()
+        self.include_labels = include_labels
+            
+            
+        if train:
+            partition_key = 'train'
+        else:
+            partition_key = 'test'
+        
+  
+        if keep_separate:
+            self.data = {}
+                
+            self.lengths = []
+            cumulative_length = 0
+            for label in include_labels:
+                label_data = []
+                for key in include_keys:
+                    label_data.append(data[label][partition_key][key])
+                self.data[label] = label_data
+
+                self.lengths.append((label, len(label_data[0]), cumulative_length))
+                cumulative_length += len(label_data[0])
+
+            self.length = cumulative_length
+        
+        else:
+            self.data = []
+            for key in include_keys:
+                key_label_data = []
+                #label_data = []
+                for label in include_labels:
+                    key_label_data.append(data[label][partition_key][key])
+                #    label_data.append(torch.tensor(label).repeat(len(data[label][key]))
+                
+                self.data.append(torch.cat(key_label_data))
+                
+            labels = []
+            key0 = include_keys[0]
+            for label in include_labels:
+                labels.append(torch.tensor(label).repeat( len(data[label][partition_key][key0]) ))
+            self.labels = torch.cat(labels)
+            self.length = len(self.labels)
+                              
+            
+    def __getitem__(self, i):
+        if self.keep_separate:
+            pass
+        else:
+            return [ self.data[k][i] for k in range(len(self.data)) ] + [ self.labels[i] ]
+
+        
+    def __len__(self):
+        return self.length     
+
+    
+    
+def test_sorted_dataset():
+    path0 = './models/autoencoder/cifar_sorted.pth'
+    path1 = './models/autoencoder/cifar_sorted_stylegan.pth'
+    include_labels = [0, 1]
+    
+    cifar = Sorted_Dataset(path0, train=True, include_keys=['images'], include_labels=include_labels)
+    
+    stylegan = Sorted_Dataset(path1, train = True, include_keys=['z_values', 'images'], include_labels = include_labels)
+                           
+    print(len(cifar))
+    print(len(stylegan))
+    
+    x, y = cifar[500]
+    print(x.size(), y)
+    
+    z, x, y = stylegan[500]
+    print(z.size(), x.size(), y)
+
+    
+    
 class Multi_Dataset_Loader:
     def __init__(self, dset_dict, batch_size=64, loader_length = 'max', shuffle=False, drop_last=False):
         self.dset_dict = dset_dict
@@ -737,6 +918,7 @@ def get_dataloaders(cfg, stage):
     
 
     elif mode == 'extract_probs':
+        pass
 #     real_class_0 = torch.load('./models/autoencoder/cifar_real_class_0.pth')['images'].cpu()
 #     real_class_0 = real_class_0*2-1
 #     real_class_1 = torch.load('./models/autoencoder/cifar_real_class_1.pth')['images'].cpu()
@@ -765,6 +947,7 @@ def get_dataloaders(cfg, stage):
 
     
     elif mode == 'visualize':
+        pass
     ##### Fake batches ########
 #     fake_class_1 = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['images']
 #     fake_class_1_codes = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['z_values']    
@@ -1316,6 +1499,17 @@ def visualize_experiment(model_path, model_name_prefix, data_cfg):
     
     
 
+##
+# New pressure loss function (to be moved upward)
+def pressure_loss(x, lmbda, dim=512, eps = 0.1):
+    numerator = np.sqrt(dim)
+    norms = torch.norm(x,dim=1)
+    losses = numerator / (norms + eps)
+    total_loss = lmbda*losses.mean()
+    return total_loss
+
+##
+    
     
 if __name__ == '__main__':
     import argparse
@@ -1327,10 +1521,10 @@ if __name__ == '__main__':
     parser.add_argument('--experiment_suffix', type=str, default=None)
     parser.add_argument('--experiment_number', type=int, default=None)
     parser.add_argument('--model_name_prefix', type=str, default=None)
-    parser.add_argument('--autoencoder_config_key', default='linear')
-    parser.add_argument('--phi_config_key', default='regular')
+    parser.add_argument('--autoencoder_config_key', default='linear_ae')
+    parser.add_argument('--phi_config_key', default='linear_ae')
     parser.add_argument('--dataset_config_key', default='cifar_1_all')
-    parser.add_argument('--train_config_key', default='train_1')
+    parser.add_argument('--train_config_key', default='cifar_1_all')
     opt = parser.parse_args()
     
     if opt.experiment_suffix is None:
@@ -1342,7 +1536,7 @@ if __name__ == '__main__':
     if opt.model_name_prefix is None:
         opt.model_name_prefix = opt.experiment_prefix + opt.experiment_suffix
     
-    data_cfg = dataset_config(opt.dataset_config_key, opt.save_directory, opt.dataset_directory)
+    data_cfg = dataset_config(opt.dataset_config_key, opt.save_directory, opt.dataset_directory, opt.model_name_prefix)
     autoencoder_cfg = autoencoder_config(opt.autoencoder_config_key)
     phi_cfg = phi_config(opt.phi_config_key)
     train_cfg = train_config(opt.train_config_key)
@@ -1352,8 +1546,12 @@ if __name__ == '__main__':
         run_experiment(opt.save_directory, opt.model_name_prefix, autoencoder_cfg, phi_cfg, data_cfg, train_cfg)
     elif opt.mode == 'visualize':
         visualize_experiment(opt.save_directory, opt.model_name_prefix, data_cfg)
-    
-
+    elif opt.mode == 'preprocess_cifar':
+        preprocess_cifar(opt.dataset_directory, opt.save_directory)
+    elif opt.mode == 'sample_stylegan':
+        sample_cifar_stylegan(opt.save_directory)
+    elif opt.mode == 'test_sorted':
+        test_sorted_dataset()
     
     
 # Next to do:
