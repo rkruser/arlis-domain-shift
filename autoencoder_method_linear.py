@@ -179,6 +179,7 @@ class Encoder(nn.Module):
         
         if layer_kwargs is None:
             layer_kwargs = edict(downsample=2, max_out_maps=512)
+            layer_kwargs.nonlinearity = self.nonlinearity
             if lean:
                 layer_kwargs.batchnorm = False
             elif very_lean:
@@ -241,6 +242,7 @@ class Decoder(nn.Module):
         
         if layer_kwargs is None:
             layer_kwargs = edict(upsample=2, min_out_maps=2**min_exponent)
+            layer_kwargs.nonlinearity = self.nonlinearity
             if lean:
                 layer_kwargs.batchnorm = False
             elif very_lean:
@@ -344,14 +346,23 @@ class Phi_regressor(nn.Module):
 ################  Aggregate models
 ################################################################################        
 class Domain_adversary(nn.Module):
-    def __init__(self):
+    def __init__(self, linear=True):
         super().__init__()
-        self.layer1 = nn.Linear(512,512)
-        self.nonlinearity = nn.LeakyReLU(0.2,inplace=True)
-        self.layer2 = nn.Linear(512,1)
+        
+        self.linear = linear
+        if linear:
+            self.layer1 = nn.Linear(512,1)
+            
+        else:
+            self.layer1 = nn.Linear(512,512)
+            self.nonlinearity = nn.LeakyReLU(0.2,inplace=True)
+            self.layer2 = nn.Linear(512,1)
         
     def forward(self, x):
-        return self.layer2(self.nonlinearity(self.layer1(x))).squeeze(1)
+        if self.linear:
+            return self.layer1(x).squeeze(1)
+        else:
+            return self.layer2(self.nonlinearity(self.layer1(x))).squeeze(1)
 
     
     
@@ -363,7 +374,7 @@ class Autoencoder_Model:
         self.decoder = Decoder(input_size, very_lean=very_lean, all_linear=linear, add_linear=True).cuda()
         
         if self.use_adversary:
-            self.domain_adversary = Domain_adversary().cuda()
+            self.domain_adversary = Domain_adversary(linear=linear).cuda()
         
         self.encoder_optim = torch.optim.Adam(self.encoder.parameters(), lr=0.0001)
         self.decoder_optim = torch.optim.Adam(self.decoder.parameters(), lr=0.0001)
@@ -385,6 +396,9 @@ class Phi_Model:
 ################################################################################
 ################  Training functions
 ################################################################################
+
+# dataloader assumed to be a multiloader
+# keys: real, fake, augmented
 def train_autoencoder(model, dataloader, n_epochs, use_adversary=True):
     #reconstruction_loss = torch.nn.BCEWithLogitsLoss()
     #reconstruction_loss = torch.nn.MSELoss()
@@ -395,6 +409,9 @@ def train_autoencoder(model, dataloader, n_epochs, use_adversary=True):
     def reconstruction_loss(x,y):
         return l1_lossfunc(x,y)+l2_lossfunc(x,y)
     
+    def reg_loss(e):
+        return (torch.norm(e.view(e.size(0),-1), dim=1)**2).mean()
+    
     adversary_loss = None
     if use_adversary:
         adversary_loss = torch.nn.BCEWithLogitsLoss()
@@ -404,42 +421,56 @@ def train_autoencoder(model, dataloader, n_epochs, use_adversary=True):
     
     if use_adversary:
         model.domain_adversary.train()
-    
-    if use_adversary:
         lmbda_adv = 1
-
+        lmbda_reg = 0.001
     else:
         lmbda_adv = 0
+        lmbda_reg = 0
     
     phase = 0
     for epoch in range(n_epochs):
         print("Epoch", epoch)
         for i, batch in enumerate(dataloader):
-            x, y = batch
-            x = x.cuda()
-            y = y.cuda()
+            x_real, _ = batch['real']
+            x_fake, _ = batch['fake']
+            x_augmented, _ = batch['augmented']
             
-            z = model.encoder(x)
-            noise = noise_coeff*torch.randn(z.size(), device=z.device)
-            z = z+noise
+            x_real = x_real.cuda()
+            y_real = torch.zeros(len(x_real),device=x_real.device) #domain labels
+            
+            x_fake = x_fake.cuda()
+            y_fake = torch.ones(len(x_fake), device=x_fake.device) #domain labels
+            
+            x_augmented = x_augmented.cuda()
+
+
+            
             
             loss_info = None
             if phase == 0:
                 # train encoder and decoder
-
-
+                enc_x_real = model.encoder(x_real)
+                enc_x_fake = model.encoder(x_fake)
+                enc_x_aug = model.encoder(x_augmented)
+ 
+                
                 if use_adversary:
-                    predicted_domains = model.domain_adversary(z)
-                    adv_loss = adversary_loss(predicted_domains,y)
+                    predicted_real_domains = model.domain_adversary(enc_x_real)
+                    predicted_fake_domains = model.domain_adversary(enc_x_fake)
+                    adv_loss = (1.0/2)*(adversary_loss(predicted_real_domains,y_real)+adversary_loss(predicted_fake_domains, y_fake))
+                    regularizing_loss = (1.0/3)*(reg_loss(enc_x_real)+reg_loss(enc_x_fake) + reg_loss(enc_x_aug))
                 else:
                     adv_loss = 0
-                #reconstruction = torch.sigmoid(model.decoder(z))
-                reconstruction = model.decoder(z)
+                    regularizing_loss = 0
+
+                recon_real = torch.tanh(model.decoder(enc_x_real)) #add a variant of tanh?
+                recon_fake = torch.tanh(model.decoder(enc_x_fake))
+                recon_aug = torch.tanh(model.decoder(enc_x_aug))
                 
+                recon_loss = (1.0/3)*(reconstruction_loss(recon_real, x_real) + reconstruction_loss(recon_fake, x_fake) + reconstruction_loss(recon_aug, x_augmented))
+
                 
-                recon_loss = reconstruction_loss(reconstruction, x)
-                regularizing_loss = (torch.norm(z.view(z.size(0),-1),dim=1)**2).mean()
-                total_loss = recon_loss-lmbda_adv*adv_loss+lmbda_reg*regularizing_loss
+                total_loss = recon_loss - lmbda_adv*adv_loss +lmbda_reg*regularizing_loss
                 #total_loss = recon_loss#+regularizing_loss
                 
                 model.encoder.zero_grad()
@@ -456,11 +487,14 @@ def train_autoencoder(model, dataloader, n_epochs, use_adversary=True):
                 
                 
             if phase == 1:
-                predicted_domains = model.domain_adversary(z)
-                adv_loss = adversary_loss(predicted_domains,y)
-                
-                model.encoder.zero_grad()
-                model.decoder.zero_grad()                
+                # Train adversary
+               
+                enc_x_real = model.encoder(x_real)
+                enc_x_fake = model.encoder(x_fake)
+                predicted_real_domains = model.domain_adversary(enc_x_real)
+                predicted_fake_domains = model.domain_adversary(enc_x_fake)
+                adv_loss = (1.0/2)*(adversary_loss(predicted_real_domains,y_real)+adversary_loss(predicted_fake_domains, y_fake))
+                               
                 model.domain_adversary.zero_grad()
                 adv_loss.backward()
                 model.domain_adversary_optim.step()
@@ -681,7 +715,14 @@ def sample_cifar_stylegan(savedir):
             w_values = cifar_stylegan_net.mapping(batch, classes)
             
             image_outputs = cifar_stylegan_net.synthesis(w_values, noise_mode='const', force_fp32=True)
-            image_outputs = image_outputs.clamp(-1,1)
+            
+            if i==0:
+                print(image_outputs[0].min(), image_outputs[0].max())
+                
+            image_outputs = normalize_to_range(image_outputs)
+            
+            if i==0:
+                print(image_outputs[0].min(), image_outputs[0].max())
             
             images.append(image_outputs.detach().cpu())
             w_vals.append(w_values[:,0,:].cpu())
@@ -709,7 +750,7 @@ def sample_cifar_stylegan(savedir):
             }
         }
         
-    torch.save(stylegan_sorted, os.path.join(savedir, 'cifar_stylegan_samples.pth'))
+    torch.save(stylegan_sorted, os.path.join(savedir, 'cifar_stylegan_samples_renorm.pth'))
     
     
     
@@ -724,6 +765,31 @@ def sample_cifar_stylegan(savedir):
     
     
     
+def normalize_to_range(x, minval=-1, maxval=1, element_wise = True):
+    if element_wise:
+        original_size = x.size()
+        x = x.view(x.size(0), -1)
+        mins, _ = x.min(dim=1)
+        maxes, _ = x.max(dim=1)        
+        mins = mins.unsqueeze(1)
+        maxes = maxes.unsqueeze(1)
+        x = (x-mins)/(maxes-mins)
+        x = (maxval-minval)*x + minval
+        x = x.view(original_size)
+        return x
+    else:
+        allmin = x.min()
+        allmax = x.max()
+        x = (x-allmin)/(allmax-allmin)
+        x = (maxval-minval)*x + minval
+        return x
+    
+def add_noise_and_renormalize(x, range_proportion=1.0/256, minval=-1, maxval=1):
+    coeff = range_proportion*(maxval-minval)
+    noise = 2*coeff*torch.rand(x.size()) - coeff
+    x += noise
+    x = normalize_to_range(x, minval=minval, maxval=maxval, element_wise=True)
+    return x
     
     
 class Domain_Adversarial_Dataset(torch.utils.data.Dataset):
@@ -769,20 +835,21 @@ class Sorted_Dataset(torch.utils.data.Dataset):
         
   
         if keep_separate:
-            self.data = {}
+            pass
+#             self.data = {}
                 
-            self.lengths = []
-            cumulative_length = 0
-            for label in include_labels:
-                label_data = []
-                for key in include_keys:
-                    label_data.append(data[label][partition_key][key])
-                self.data[label] = label_data
+#             self.lengths = []
+#             cumulative_length = 0
+#             for label in include_labels:
+#                 label_data = []
+#                 for key in include_keys:
+#                     label_data.append(data[label][partition_key][key])
+#                 self.data[label] = label_data
 
-                self.lengths.append((label, len(label_data[0]), cumulative_length))
-                cumulative_length += len(label_data[0])
+#                 self.lengths.append((label, len(label_data[0]), cumulative_length))
+#                 cumulative_length += len(label_data[0])
 
-            self.length = cumulative_length
+#             self.length = cumulative_length
         
         else:
             self.data = []
@@ -811,7 +878,7 @@ class Sorted_Dataset(torch.utils.data.Dataset):
 
         
     def __len__(self):
-        return self.length     
+        return self.length
 
     
     
@@ -836,12 +903,14 @@ def test_sorted_dataset():
     
     
 class Multi_Dataset_Loader:
-    def __init__(self, dset_dict, batch_size=64, loader_length = 'max', shuffle=False, drop_last=False):
+    def __init__(self, dset_dict, batch_size=64, loader_length = 'sum', shuffle=False, drop_last=False, all_at_once=True):
         self.dset_dict = dset_dict
         self.loaders = {}
         self.iterators = {}
         self.batch_size = batch_size
         self.length = 0
+        self.all_at_once = all_at_once
+        
         for key in self.dset_dict:
             dset = self.dset_dict[key]
             loader = torch.utils.data.DataLoader(dset,
@@ -852,6 +921,8 @@ class Multi_Dataset_Loader:
             self.iterators[key] = iter(loader)
             if loader_length == 'max':
                 self.length = max(self.length, len(loader))
+            elif loader_length == 'sum':
+                self.length += len(loader)
                 
         if isinstance(loader_length, int):
             self.length = loader_length
@@ -870,19 +941,80 @@ class Multi_Dataset_Loader:
         return self.length
     
     def __iter__(self):
-        self.iter_state = 0
+        if not self.all_at_once:
+            self.iter_state = 0
         self.iter_count = 0
+        return self
         
     def __next__(self):
         if self.iter_count == self.length:
             raise StopIteration
-            
-        key = self.dset_dict.keys()[self.iter_state]
-        batch = self.get_next_batch(key)
-        self.iter_state = (self.iter_state + 1)%len(self.dset_dict)
+        
+        batches = None
+        if self.all_at_once:
+            batches = {}
+            for key in self.dset_dict:
+                batches[key] = self.get_next_batch(key)
+        else:
+            key = self.dset_dict.keys()[self.iter_state]
+            batch = self.get_next_batch(key)
+            self.iter_state = (self.iter_state + 1)%len(self.dset_dict)
+            batches = {key:batch}
+        
         self.iter_count += 1
-        return key, batch
+        return batches
+
+def test_multi_loader():
+    path0 = './models/autoencoder/cifar_sorted.pth'
+    path1 = './models/autoencoder/cifar_sorted_stylegan.pth'
     
+    cifar_1 = Sorted_Dataset(path0, train=True, include_keys=['images'], include_labels=[1])
+    cifar_rest = Sorted_Dataset(path0, train=True, include_keys=['images'], include_labels=[0,2,3,4,5,6,7,8,9])
+    
+    stylegan = Sorted_Dataset(path1, train = True, include_keys=['z_values', 'images'], include_labels = [1])
+    
+    
+    loader = Multi_Dataset_Loader({'cifar_1':cifar_1, 'cifar_rest':cifar_rest, 'stylegan':stylegan}, shuffle=True)
+    print(len(loader))
+    batches = next(iter(loader))
+    print(batches.keys())
+    for key in batches:
+        print(key)
+        for item in batches[key]:
+            print(item.size())
+        print(batches[key][-1])
+        
+    for i, batch in enumerate(loader):
+        if i > 3:
+            sys.exit()
+        for key in batch:
+            print(key)
+            for item in batch[key]:
+                if len(item.size()) == 4:
+                    view_tensor_images(item)
+
+
+def test_stylegan_norm():
+    path0 = './models/autoencoder/cifar_sorted_stylegan.pth'
+    path1 = './models/autoencoder/cifar_stylegan_samples_renorm.pth'
+    
+    style0 = Sorted_Dataset(path0, train=True, include_keys=['images'], include_labels=[1])
+    stylenorm = Sorted_Dataset(path1, train=True, include_keys=['images'], include_labels=[1])
+    
+    
+    
+    loader = Multi_Dataset_Loader({'clamped':style0, 'normed':stylenorm}, shuffle=False)
+    print(len(loader))
+        
+    for i, batch in enumerate(loader):
+        if i > 3:
+            sys.exit()
+        for key in batch:
+            print(key)
+            for item in batch[key]:
+                if len(item.size()) == 4:
+                    view_tensor_images(item)                    
+                    
     
 def get_dataloaders(cfg, stage):
     # Load all of cifar, optionally priveliging real_classes (None or a tuple)
@@ -895,22 +1027,20 @@ def get_dataloaders(cfg, stage):
     mode = cfg.mode
     print("...dataloader mode", mode)
     
-    if mode == 'cifar_all':
-        im_transform = tv.transforms.Compose([
-            tv.transforms.ToTensor(),
-            tv.transforms.Normalize((0.5,0.5,0.5),(0.5,0.5,0.5))
-        ])
-        full_dataset = tv.datasets.CIFAR10(cfg.real, train=True, transform=im_transform,
-                                   target_transform=None, download=False)
-        fake_dataset = torch.utils.data.TensorDataset(torch.load(cfg.fake)['images'])
+    if mode == 'threeway':
+        cfg.real
+        cfg.fake
+        cfg.augmented
+        cfg.real_classes
+        cfg.fake_classes
+        cfg.augmented_classes
         
-        aggregate = Domain_Adversarial_Dataset(full_dataset, fake_dataset, cfg.real_classes)
+        real_dset = Sorted_Dataset(cfg.real, train=True, include_keys=['images'], include_labels=cfg.real_classes)
+        fake_dset = Sorted_Dataset(cfg.fake, train=True, include_keys=['images'], include_labels=cfg.fake_classes)
+        aug_dset = Sorted_Dataset(cfg.augmented, train=True, include_keys=['images'], include_labels=cfg.augmented_classes)
+        dsets = {'real':real_dset, 'fake':fake_dset, 'augmented':aug_dset}
+        dataloader = Multi_Dataset_Loader(dsets, batch_size=128, shuffle=True, drop_last=True)
         
-        dataloader = torch.utils.data.DataLoader(aggregate,
-                                                 batch_size=128,
-                                                 shuffle=True,
-                                                 drop_last=True,
-                                                 pin_memory=True)        
         return dataloader
     
     elif mode == 'phi_training':
@@ -1022,9 +1152,24 @@ def build_and_train_autoencoder(model_path, model_name_prefix, autoencoder_cfg, 
     
     train_autoencoder(model, dataloader, **train_cfg.ae_stage)
 
-    pickle.dump(model, open(model_full_path, 'wb'))
+    pickle.dump(model, open(model_fullpath, 'wb'))
 
 
+def visualize_autoencoder(model_path, model_name_prefix, data_cfg):
+    model_fullpath = os.path.join(model_path, model_name_prefix+'_autoencoder.pkl')
+    model = pickle.load(open(model_fullpath,'rb'))
+    
+    dataloader = get_dataloaders(data_cfg, 'ae_stage')
+    for i, batch in enumerate(dataloader):
+        for key in batch:
+            print(key)
+            print("original")
+            ims = batch[key][0][:64]
+            view_tensor_images(ims)
+            print("reconstructed")
+            view_tensor_images(torch.tanh(model.decoder(model.encoder(ims.cuda()))))
+        if i > 2:
+            break
     
     
 def build_and_train_invertible(model_path, model_name_prefix, phi_cfg, data_cfg, train_cfg):
@@ -1410,10 +1555,13 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix):
         {
             'cifar_1_all': {
                 'ae_stage': {
-                    'mode': 'cifar_all',
-                    'real': dataset_directory, # preprocessed standard data
-                    'fake': os.path.join(model_path, 'cifar_class_1_generated.pth'), # preprocessed fake data
-                    'real_classes':[ 1 ] 
+                    'mode': 'threeway',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'), # preprocessed standard data
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), # preprocessed fake data
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0,2,3,4,5,6,7,8,9]
                 },
                 'encode_stage': {
                     'mode': 'encode',
@@ -1486,9 +1634,11 @@ def phi_config(key):
 def run_experiment(model_path, model_name_prefix, autoencoder_cfg, phi_cfg, data_cfg, train_cfg):
 
     build_and_train_autoencoder(model_path, model_name_prefix, autoencoder_cfg, data_cfg, train_cfg)
-    encode_samples(model_path, model_name_prefix, data_cfg)    
-    build_and_train_invertible(model_path, model_name_prefix, phi_cfg, data_cfg, train_cfg)
-    extract_probabilities(model_path, model_name_prefix, data_cfg)
+    
+    
+    #encode_samples(model_path, model_name_prefix, data_cfg)    
+    #build_and_train_invertible(model_path, model_name_prefix, phi_cfg, data_cfg, train_cfg)
+    #extract_probabilities(model_path, model_name_prefix, data_cfg)
 
     
     
@@ -1536,7 +1686,7 @@ if __name__ == '__main__':
     if opt.model_name_prefix is None:
         opt.model_name_prefix = opt.experiment_prefix + opt.experiment_suffix
     
-    data_cfg = dataset_config(opt.dataset_config_key, opt.save_directory, opt.dataset_directory, opt.model_name_prefix)
+    data_cfg = dataset_config(opt.dataset_config_key, opt.dataset_directory, opt.save_directory, opt.model_name_prefix)
     autoencoder_cfg = autoencoder_config(opt.autoencoder_config_key)
     phi_cfg = phi_config(opt.phi_config_key)
     train_cfg = train_config(opt.train_config_key)
@@ -1544,6 +1694,8 @@ if __name__ == '__main__':
     
     if opt.mode == 'run':
         run_experiment(opt.save_directory, opt.model_name_prefix, autoencoder_cfg, phi_cfg, data_cfg, train_cfg)
+    elif opt.mode == 'visualize_ae':
+        visualize_autoencoder(opt.save_directory, opt.model_name_prefix, data_cfg)
     elif opt.mode == 'visualize':
         visualize_experiment(opt.save_directory, opt.model_name_prefix, data_cfg)
     elif opt.mode == 'preprocess_cifar':
@@ -1552,14 +1704,18 @@ if __name__ == '__main__':
         sample_cifar_stylegan(opt.save_directory)
     elif opt.mode == 'test_sorted':
         test_sorted_dataset()
-    
-    
+    elif opt.mode == 'test_multi':
+        test_multi_loader()
+    elif opt.mode == 'test_norm':
+        test_stylegan_norm()    
 # Next to do:
 #  - Finish redoing the training procedures
 #  - Finish implementing the get_loaders function and make sure it works with everything
 #  - Train with the new method
     
-    
+# Notes:
+#  is clamping the stylegan outputs a bad idea? Perhaps rescale them instead?
+#  also, add noise to all the images and rescale?
     
     
     
