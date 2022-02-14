@@ -517,10 +517,20 @@ def train_invertible(model, dataloader, n_epochs):
     lossfunc = torch.nn.MSELoss()
     lmbda = 0.1
     
-    
-    model.e2z.train()
-    model.z2e.train()
-    
+
+    def pressure_loss(x, lmbda, dim=512, eps = 0.1):
+        numerator = np.sqrt(dim)
+        norms = torch.norm(x,dim=1)
+        losses = numerator / (norms + eps)
+        total_loss = lmbda*losses.mean()
+        return total_loss  
+
+
+        model.e2z.train()
+        model.z2e.train()
+  
+
+
     alternator = 0
     for n in range(n_epochs):
         print("Epoch", n)
@@ -1168,7 +1178,7 @@ def visualize_autoencoder(model_path, model_name_prefix, data_cfg):
             view_tensor_images(ims)
             print("reconstructed")
             view_tensor_images(torch.tanh(model.decoder(model.encoder(ims.cuda()))))
-        if i > 2:
+        if i > 1:
             break
     
     
@@ -1193,13 +1203,16 @@ def build_and_train_invertible(model_path, model_name_prefix, phi_cfg, data_cfg,
     
     pickle.dump(model, open(model_fullpath,'wb'))
  
-    
+
+
+# Need to rewrite some of this to deal with how the data files are structured
 def encode_samples(model_path, model_name_prefix, data_cfg):
     model_fullpath = os.path.join(model_path, model_name_prefix+'_autoencoder.pkl')
     model = pickle.load(open(model_fullpath,'rb'))
 
     
     samples = torch.load(data_cfg.encode_stage.fake_sample_file)
+    # also do real sample file
     
 #     samples = torch.load('./models/autoencoder/cifar_class_1_generated.pth')
 #     print(samples.keys())
@@ -1649,14 +1662,7 @@ def visualize_experiment(model_path, model_name_prefix, data_cfg):
     
     
 
-##
-# New pressure loss function (to be moved upward)
-def pressure_loss(x, lmbda, dim=512, eps = 0.1):
-    numerator = np.sqrt(dim)
-    norms = torch.norm(x,dim=1)
-    losses = numerator / (norms + eps)
-    total_loss = lmbda*losses.mean()
-    return total_loss
+
 
 ##
     
@@ -1718,6 +1724,9 @@ if __name__ == '__main__':
 #  also, add noise to all the images and rescale?
     
     
-    
+# Next (Sunday)
+# - encode the data with the trained model
+# - visualize autoencoder again
+# - do rest of experiment
     
     
