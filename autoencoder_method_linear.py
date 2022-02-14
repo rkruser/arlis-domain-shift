@@ -1065,71 +1065,18 @@ def get_dataloaders(cfg, stage):
         return dataloader
 
     elif mode == 'extract_probs':
-        pass
-#     real_class_0 = torch.load('./models/autoencoder/cifar_real_class_0.pth')['images'].cpu()
-#     real_class_0 = real_class_0*2-1
-#     real_class_1 = torch.load('./models/autoencoder/cifar_real_class_1.pth')['images'].cpu()
-#     real_class_1 = real_class_1*2-1
-    
-    
-#     class_0_dataloader = torch.utils.data.DataLoader(real_class_0,
-#                                          batch_size=256,
-#                                          shuffle=False,
-#                                          drop_last=False)
-#     class_1_dataloader = torch.utils.data.DataLoader(real_class_1,
-#                                      batch_size=256,
-#                                      shuffle=False,
-#                                      drop_last=False)
- 
+        real_dset = Sorted_Dataset(cfg.real, train=False, include_keys=[cfg.encoding_key], include_labels=cfg.real_classes)
+        fake_dset = Sorted_Dataset(cfg.fake, train=False, include_keys=[cfg.encoding_key], include_labels=cfg.fake_classes)
+        aug_dset = Sorted_Dataset(cfg.augmented, train=False, include_keys=[cfg.encoding_key], include_labels=cfg.augmented_classes)
+        dsets = {'real':real_dset, 'fake':fake_dset, 'augmented':aug_dset}
+        dataloader = Multi_Dataset_Loader(dsets, batch_size=64, shuffle=False, drop_last=False)
+        return dataloader
 
-#     fake_class_1 = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['images'].cpu()
-#     fake_class_1 = fake_class_1[:real_class_0.size(0)]
-#     fake_class_1_dataloader = torch.utils.data.DataLoader(fake_class_1,
-#                                      batch_size=256,
-#                                      shuffle=False,
-#                                      drop_last=False)
-#     print(real_class_0[0].min(), real_class_1[0].min(), fake_class_1[0].min())
-    
-    #fake_class_1_codes = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['z_values']
 
     
     elif mode == 'visualize':
         pass
-    ##### Fake batches ########
-#     fake_class_1 = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['images']
-#     fake_class_1_codes = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['z_values']    
-#     fake_dataloader = torch.utils.data.DataLoader(fake_class_1_codes,
-#                                          batch_size=64,
-#                                          shuffle=False,
-#                                          drop_last=False)
-#     fake_image_dataloader = torch.utils.data.DataLoader(fake_class_1,
-#                                      batch_size=64,
-#                                      shuffle=False,
-#                                      drop_last=False)    
 
-#     fake_batch = next(iter(fake_dataloader)).cpu()
-#     fake_image_batch = next(iter(fake_image_dataloader)).cpu()
-    
-#     fake_batches = [("fake_class_1", fake_batch, fake_image_batch)]
-    
-#     ##### Real batches ########
-#     real_class_1 = torch.load('./models/autoencoder/cifar_real_class_1.pth')['images']
-#     real_class_1 = real_class_1*2-1    
-#     real_dataloader_1 = torch.utils.data.DataLoader(real_class_1,
-#                                      batch_size=64,
-#                                      shuffle=False,
-#                                      drop_last=False)    
-    
-#     real_class_0 = torch.load('./models/autoencoder/cifar_real_class_0.pth')['images']
-#     real_class_0 = real_class_0*2-1    
-#     real_dataloader_0 = torch.utils.data.DataLoader(real_class_0,
-#                                      batch_size=64,
-#                                      shuffle=False,
-#                                      drop_last=False)
-#     real_batch_class_0 = next(iter(real_dataloader_0)).cpu()
-#     real_batch_class_1 = next(iter(real_dataloader_1)).cpu()
-    
-#     real_batches = [("real_class_0",real_batch_class_0), ("real_class_1", real_batch_class_1)]
    
     
 
@@ -1270,41 +1217,11 @@ def encode_samples(model_path, model_name_prefix, data_cfg):
             
 
 def extract_probabilities(model_path, model_name_prefix, data_cfg):
-#     real_class_0 = torch.load('./models/autoencoder/cifar_real_class_0.pth')['images'].cpu()
-#     real_class_0 = real_class_0*2-1
-#     real_class_1 = torch.load('./models/autoencoder/cifar_real_class_1.pth')['images'].cpu()
-#     real_class_1 = real_class_1*2-1
+    multi_loader = get_dataloaders(data_cfg, 'prob_stage')   
     
+    phi_model = pickle.load(open(data_cfg.prob_stage.phi_model_file,'rb'))    
+    model = pickle.load(open(data_cfg.prob_stage.model_file,'rb'))
     
-#     class_0_dataloader = torch.utils.data.DataLoader(real_class_0,
-#                                          batch_size=256,
-#                                          shuffle=False,
-#                                          drop_last=False)
-#     class_1_dataloader = torch.utils.data.DataLoader(real_class_1,
-#                                      batch_size=256,
-#                                      shuffle=False,
-#                                      drop_last=False)
- 
-
-#     fake_class_1 = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['images'].cpu()
-#     fake_class_1 = fake_class_1[:real_class_0.size(0)]
-#     fake_class_1_dataloader = torch.utils.data.DataLoader(fake_class_1,
-#                                      batch_size=256,
-#                                      shuffle=False,
-#                                      drop_last=False)
-#     print(real_class_0[0].min(), real_class_1[0].min(), fake_class_1[0].min())
-    
-    #fake_class_1_codes = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['z_values']
-    
-    
-    multi_loader = get_dataloaders(data_cfg, 'prob_stage')
-    
-    
-    phi_model_fullpath = os.path.join(model_path, model_name_prefix+'_phi.pkl')
-    ae_model_fullpath = os.path.join(model_path, model_name_prefix+'_autoencoder.pkl')
-    
-    phi_model = pickle.load(open(model_fullpath,'rb'))    
-    model = pickle.load(open(ae_model_fullpath,'rb'))
     model.encoder.eval()
     model.decoder.eval()
     phi_model.e2z.eval()
@@ -1322,7 +1239,7 @@ def extract_probabilities(model_path, model_name_prefix, data_cfg):
         dataloader = multi_loader.loaders[name]
         
         print(name)
-        e_codes = []
+        #e_codes = []
         e_differences = []
         e_norms = []
         logpriors = []
@@ -1332,9 +1249,8 @@ def extract_probabilities(model_path, model_name_prefix, data_cfg):
         total_e2z_probs = []
         for i, batch in enumerate(dataloader):
             print("  {0} of {1}".format(i,len(dataloader)))
-            batch = batch.cuda()
-            e_c = model.encoder(batch).detach()
-            e_codes.append(e_c.cpu())
+            e_c, _ = batch
+            e_c = e_c.cuda() #e codes
             
             e_c.requires_grad_(True)
             z_predicted = phi_model.e2z(e_c)
@@ -1361,7 +1277,7 @@ def extract_probabilities(model_path, model_name_prefix, data_cfg):
             total_e2z_probs.append(z_log_priors+forward_jacobians)
         
         stats[name] = edict()
-        stats[name].e_codes = torch.cat(e_codes)
+        #stats[name].e_codes = torch.cat(e_codes)
         stats[name].e_differences = torch.cat(e_differences)
         stats[name].e_norms = torch.cat(e_norms)
         stats[name].log_priors = torch.cat(logpriors)
@@ -1496,46 +1412,46 @@ def view_extracted_probabilities(model_path, model_name_prefix, data_cfg):
     
     
     plt.title("logpriors")
-    plt.hist(data.class_1.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
-    plt.hist(data.fake_class_1.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.class_0.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.hist(data.real.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
     plt.legend()
     plt.show()
     
     plt.title("e2z jacobians")
-    plt.hist(data.class_1.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
-    plt.hist(data.fake_class_1.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.class_0.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.hist(data.real.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
     plt.legend()
     plt.show()    
     
     
     plt.title("e2z combined")
-    plt.hist(data.class_1.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
-    plt.hist(data.fake_class_1.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.class_0.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.hist(data.real.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
     plt.legend()
     plt.show()       
     
     plt.title("z2e jacobians")
-    plt.hist(data.class_1.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
-    plt.hist(data.fake_class_1.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.class_0.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.hist(data.real.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
     plt.legend()
     plt.show()     
     
     
     plt.title("z2e combined")
-    plt.hist(data.class_1.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
-    plt.hist(data.fake_class_1.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.class_0.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.hist(data.real.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
     plt.legend()
     plt.show()     
     
     plt.title("difference norms")
-    plt.hist(data.class_1.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
-    plt.hist(data.fake_class_1.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.class_0.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.hist(data.real.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
     plt.legend()
     plt.show()      
     
@@ -1622,13 +1538,22 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix):
                     'encoding_key': 'encodings_' + model_name_prefix
                 },
                 'prob_stage': {
-                      
+                    'mode': 'extract_probs',
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'phi_model_file':  os.path.join(model_path, model_name_prefix+'_phi.pkl'),
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0],
+                    'encoding_key': 'encodings_' + model_name_prefix                     
                 },
                 'visualize_stage': {
                     
                 },
                 'plot_stage': {
-                    
+                    'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
                 },
             }
         }
@@ -1752,6 +1677,11 @@ if __name__ == '__main__':
         encode_samples(opt.save_directory, opt.model_name_prefix, data_cfg)
     elif opt.mode == 'train_phi':
         build_and_train_invertible(opt.save_directory, opt.model_name_prefix, phi_cfg, data_cfg, train_cfg)
+    elif opt.mode == 'extract_probs':
+        extract_probabilities(opt.save_directory, opt.model_name_prefix, data_cfg)
+    elif opt.mode == 'plot_probs':
+        view_extracted_probabilities(opt.save_directory, opt.model_name_prefix, data_cfg)
+        
 
 # Notes:
 #  is clamping the stylegan outputs a bad idea? Perhaps rescale them instead?
