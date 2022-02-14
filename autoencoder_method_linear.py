@@ -515,66 +515,69 @@ def train_autoencoder(model, dataloader, n_epochs, use_adversary=True):
 
 def train_invertible(model, dataloader, n_epochs):
     lossfunc = torch.nn.MSELoss()
-    lmbda = 0.1
+    lmbda = 0.05
     
 
-    def pressure_loss(x, lmbda, dim=512, eps = 0.1):
+    def pressure_loss(x, dim=512, eps = 0.1):
         numerator = np.sqrt(dim)
         norms = torch.norm(x,dim=1)
         losses = numerator / (norms + eps)
-        total_loss = lmbda*losses.mean()
+        total_loss = losses.mean()
         return total_loss  
 
 
-        model.e2z.train()
-        model.z2e.train()
+    model.e2z.train()
+    model.z2e.train()
   
 
 
-    alternator = 0
     for n in range(n_epochs):
         print("Epoch", n)
         for i, batch in enumerate(dataloader):
-            z_batch, e_batch = batch
-            z_batch = z_batch.cuda()
-            e_batch = e_batch.cuda()
+            z_fake, e_fake, _ = batch['fake']
+            e_real, _ = batch['real']
+            e_aug, _ = batch['augmented']
             
-            main_loss = None
-            cycled_loss = None
-            if alternator == 0:
-                predicted_encodings = model.z2e(z_batch)
-                cycled_z = model.e2z(predicted_encodings)
-                main_loss = lossfunc(predicted_encodings, e_batch)
-                cycled_loss = lossfunc(cycled_z, z_batch)
-                loss = main_loss +lmbda*cycled_loss
+            
+            z_fake = z_fake.cuda()
+            e_fake = e_fake.cuda()
+            e_real = e_real.cuda()
+            e_aug = e_aug.cuda()
+            
+            
+            z_real_pred = model.e2z(e_real)
+            z_fake_pred = model.e2z(e_fake)
+            z_aug_pred = model.e2z(e_aug)
+            
+            e_real_cycle = model.z2e(z_real_pred)
+            e_fake_cycle = model.z2e(z_fake_pred)
+            e_aug_cycle =model.z2e(z_aug_pred)
+            
+            
+            z_fake_loss = lossfunc(z_fake_pred, z_fake)
+            e_fake_cycle_loss = lossfunc(e_fake_cycle, e_fake)
+            e_real_cycle_loss = lossfunc(e_real_cycle, e_real)
+            e_aug_cycle_loss = lossfunc(e_aug_cycle, e_aug)
+            z_aug_pressure_loss = pressure_loss(z_aug_pred)
+            
+            total_loss = z_fake_loss + e_fake_cycle_loss + e_real_cycle_loss + \
+                           e_aug_cycle_loss + lmbda*z_aug_pressure_loss
+            
+            
+            
+
+            model.z2e.zero_grad()
+            model.e2z.zero_grad()
+            total_loss.backward()
+            model.z2e_optim.step()
+            model.e2z_optim.step()
                 
-                model.z2e.zero_grad()
-                model.e2z.zero_grad()
-                loss.backward()
-                model.z2e_optim.step()
-                
-            else:
-                predicted_z = model.e2z(e_batch)
-                cycled_e = model.z2e(predicted_z)
-                main_loss = lossfunc(predicted_z, z_batch) 
-                cycled_loss = lossfunc(cycled_e, e_batch)
-                loss = main_loss+ lmbda*cycled_loss
-                
-                model.e2z.zero_grad()
-                model.z2e.zero_grad()
-                loss.backward()
-                model.e2z_optim.step()
+
+            if i%100 == 0:
+                print("  {5}: z_fake_loss={0}, e_fake_cycle_loss={1}, e_real_cycle_loss={2}, e_aug_cycle_loss={3}, z_aug_pressure_loss={4}".format(z_fake_loss.item(), e_fake_cycle_loss.item(), e_real_cycle_loss.item(), e_aug_cycle_loss.item(), z_aug_pressure_loss.item(), i))
 
 
-            if i>0 and i%100 == 0 or i%101 == 0:
-                msg = None
-                if alternator == 0:
-                    msg = "z2e"
-                else:
-                    msg = "e2z"
-                print(i, msg, main_loss.item(), cycled_loss.item())
-                
-            alternator = 1-alternator
+           
             
 
 
@@ -1038,12 +1041,12 @@ def get_dataloaders(cfg, stage):
     print("...dataloader mode", mode)
     
     if mode == 'threeway':
-        cfg.real
-        cfg.fake
-        cfg.augmented
-        cfg.real_classes
-        cfg.fake_classes
-        cfg.augmented_classes
+#         cfg.real
+#         cfg.fake
+#         cfg.augmented
+#         cfg.real_classes
+#         cfg.fake_classes
+#         cfg.augmented_classes
         
         real_dset = Sorted_Dataset(cfg.real, train=True, include_keys=['images'], include_labels=cfg.real_classes)
         fake_dset = Sorted_Dataset(cfg.fake, train=True, include_keys=['images'], include_labels=cfg.fake_classes)
@@ -1053,9 +1056,13 @@ def get_dataloaders(cfg, stage):
         
         return dataloader
     
-    elif mode == 'phi_training':
-        pass #?? how to change for new training procedure?
-    
+    elif mode == 'threeway_encodings':
+        real_dset = Sorted_Dataset(cfg.real, train=True, include_keys=[cfg.encoding_key], include_labels=cfg.real_classes)
+        fake_dset = Sorted_Dataset(cfg.fake, train=True, include_keys=['z_values', cfg.encoding_key], include_labels=cfg.fake_classes)
+        aug_dset = Sorted_Dataset(cfg.augmented, train=True, include_keys=[cfg.encoding_key], include_labels=cfg.augmented_classes)
+        dsets = {'real':real_dset, 'fake':fake_dset, 'augmented':aug_dset}
+        dataloader = Multi_Dataset_Loader(dsets, batch_size=128, shuffle=True, drop_last=True)
+        return dataloader
 
     elif mode == 'extract_probs':
         pass
@@ -1171,6 +1178,8 @@ def visualize_autoencoder(model_path, model_name_prefix, data_cfg):
     
     dataloader = get_dataloaders(data_cfg, 'ae_stage')
     for i, batch in enumerate(dataloader):
+        if i > 0:
+            break
         for key in batch:
             print(key)
             print("original")
@@ -1178,22 +1187,11 @@ def visualize_autoencoder(model_path, model_name_prefix, data_cfg):
             view_tensor_images(ims)
             print("reconstructed")
             view_tensor_images(torch.tanh(model.decoder(model.encoder(ims.cuda()))))
-        if i > 1:
-            break
+
     
     
 def build_and_train_invertible(model_path, model_name_prefix, phi_cfg, data_cfg, train_cfg):
     model = Phi_Model(**phi_cfg)
-    
-    #model = pickle.load(open('./models/autoencoder/ae_phi_model_second_recon_adv.pkl','rb'))[1]
-    
-#     data = torch.load('./models/autoencoder/cifar_class_1_generated.pth')
-#     dataset = torch.utils.data.TensorDataset(data['z_values'].cuda(), data['encodings_exp_4'].cuda())
-#     print(len(dataset))
-#     dataloader = torch.utils.data.DataLoader(dataset,
-#                                          batch_size=256,
-#                                          shuffle=True,
-#                                          drop_last=True)
     
     dataloader = get_dataloaders(data_cfg, 'phi_stage')
     
@@ -1614,11 +1612,14 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix):
                     'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl')
                 },
                 'phi_stage': {
-                    'mode': 'cifar_all_phi',
-                    'real': dataset_directory, # preprocessed standard data
-                    'fake': os.path.join(model_path, 'cifar_class_1_generated.pth'), # preprocessed fake data
-                    'fake_encoding_key': 'encodings_' + model_name_prefix,
-                    'real_classes':[ 1 ]                                   
+                    'mode': 'threeway_encodings',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0,2,3,4,5,6,7,8,9],
+                    'encoding_key': 'encodings_' + model_name_prefix
                 },
                 'prob_stage': {
                       
@@ -1645,7 +1646,7 @@ def train_config(key):
                     'use_adversary':True
                 },
                 'phi_stage': {
-                    'n_epochs':200,
+                    'n_epochs':40,
                     
                 }
             }
@@ -1749,19 +1750,17 @@ if __name__ == '__main__':
         test_stylegan_norm()
     elif opt.mode == 'encode_samples':
         encode_samples(opt.save_directory, opt.model_name_prefix, data_cfg)
-# Next to do:
-#  - Finish redoing the training procedures
-#  - Finish implementing the get_loaders function and make sure it works with everything
-#  - Train with the new method
-    
+    elif opt.mode == 'train_phi':
+        build_and_train_invertible(opt.save_directory, opt.model_name_prefix, phi_cfg, data_cfg, train_cfg)
+
 # Notes:
 #  is clamping the stylegan outputs a bad idea? Perhaps rescale them instead?
 #  also, add noise to all the images and rescale?
     
     
 # Next (Sunday)
-# - encode the data with the trained model
-# - visualize autoencoder again
+# - encode the data with the trained model (done)
+# - visualize autoencoder again (done)
 # - do rest of experiment
     
     
