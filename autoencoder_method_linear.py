@@ -682,18 +682,18 @@ def preprocess_cifar(dataset_dir, save_dir):
     cifar_test = tv.datasets.CIFAR10(dataset_dir, train=False, transform=im_transform,
                                target_transform=None, download=False)
     
-    cifar_sorted = {i:{'train':[], 'test':[]} for i in range(10)}
+    cifar_sorted = {i:{'train':{'images':[]}, 'test':{'images':[]}} for i in range(10)}
     for i in range(len(cifar_train)):
         x, y = cifar_train[i]
-        cifar_sorted[y]['train'].append(x)
+        cifar_sorted[y]['train']['images'].append(x)
     for i in range(len(cifar_test)):
         x, y = cifar_test[i]
-        cifar_sorted[y]['test'].append(x)        
+        cifar_sorted[y]['test']['images'].append(x)        
         
         
     for key in cifar_sorted:
-        cifar_sorted[key]['train'] = torch.stack(cifar_sorted[key]['train'])
-        cifar_sorted[key]['test'] = torch.stack(cifar_sorted[key]['test'])
+        cifar_sorted[key]['train']['images'] = torch.stack(cifar_sorted[key]['train']['images'])
+        cifar_sorted[key]['test']['images'] = torch.stack(cifar_sorted[key]['test']['images'])
         
     torch.save(cifar_sorted, os.path.join(save_dir, 'cifar_sorted.pth'))
 
@@ -705,7 +705,7 @@ def sample_cifar_stylegan(savedir):
     from models import load_torch_class
     
     #cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()
-    cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '../repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()
+    cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '../../repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()
     
 
     
@@ -760,7 +760,7 @@ def sample_cifar_stylegan(savedir):
             }
         }
         
-    torch.save(stylegan_sorted, os.path.join(savedir, 'cifar_stylegan_samples_renorm.pth'))
+    torch.save(stylegan_sorted, os.path.join(savedir, 'cifar_sorted_stylegan.pth'))
     
     
     
@@ -1207,38 +1207,69 @@ def build_and_train_invertible(model_path, model_name_prefix, phi_cfg, data_cfg,
 
 # Need to rewrite some of this to deal with how the data files are structured
 def encode_samples(model_path, model_name_prefix, data_cfg):
-    model_fullpath = os.path.join(model_path, model_name_prefix+'_autoencoder.pkl')
-    model = pickle.load(open(model_fullpath,'rb'))
-
-    
-    samples = torch.load(data_cfg.encode_stage.fake_sample_file)
-    # also do real sample file
-    
-#     samples = torch.load('./models/autoencoder/cifar_class_1_generated.pth')
-#     print(samples.keys())
-#     #sys.exit()
-    
-    ims = samples['images']
-    
-    
-    fake_dataloader = torch.utils.data.DataLoader(ims,
-                                     batch_size=128,
-                                     shuffle=False,
-                                     drop_last=False)
-    
+    model = pickle.load(open(data_cfg.encode_stage.model_file,'rb'))
     model.encoder.eval()
-    all_samples = []
-    for i,batch in enumerate(fake_dataloader):
-        if i%10==0:
-            print(i)
-        batch = batch.cuda()
-        encodings = model.encoder(batch).detach().cpu()
-        all_samples.append(encodings)
-        
-    samples['encodings_'+model_name_prefix] = torch.cat(all_samples)
-    print(samples.keys())
     
-    torch.save(samples, data_cfg.encode_stage.fake_sample_file)
+    # { label0: {train: { z_values:[], images:[], encodings:[] }, test: { z_values, images, encodings},
+    #   label1: {train: {...}, test:{...}, ...}
+    #    
+    
+    
+    ims_fake = Sorted_Dataset(data_cfg.encode_stage.fake_sample_file, train=True)
+    ims_real = Sorted_Dataset(data_cfg.encode_stage.real_sample_file, train=True)
+    
+    ims_fake_test = Sorted_Dataset(data_cfg.encode_stage.fake_sample_file, train=False)
+    ims_real_test = Sorted_Dataset(data_cfg.encode_stage.real_sample_file, train=False)    
+    
+    loaders = Multi_Dataset_Loader({'ims_real_train':ims_real, 'ims_real_test':ims_real_test, 
+                                    'ims_fake_train':ims_fake, 'ims_fake_test':ims_fake_test},
+                                   batch_size=128, shuffle=False, drop_last=False)
+    
+    
+    
+    info = {
+            'ims_real_train':('train', data_cfg.encode_stage.real_sample_file),
+            'ims_real_test':('test', data_cfg.encode_stage.real_sample_file),
+            'ims_fake_train':('train', data_cfg.encode_stage.fake_sample_file),
+            'ims_fake_test':('test', data_cfg.encode_stage.fake_sample_file)
+           }
+    
+    with torch.no_grad():
+        for key in loaders.loaders:
+            print(key)
+
+
+            all_samples = []
+            all_labels = []
+            for i, batch in enumerate(loaders.loaders[key]):
+                if i%10==0:
+                    print(i)
+                x, y = batch
+                x = x.cuda()
+                
+                encodings = model.encoder(x).detach().cpu()
+                all_samples.append(encodings)
+                all_labels.append(y)
+
+            all_samples = torch.cat(all_samples)
+            all_labels = torch.cat(all_labels)
+            print(all_samples.size())
+            print(all_labels.size())
+            
+            
+
+            data_file_contents = torch.load(info[key][1])
+            lbls = torch.unique(all_labels)
+            print(lbls)
+            for lbl in lbls:
+                lbl = lbl.item()
+                data_file_contents[lbl][info[key][0]]['encodings_'+model_name_prefix] = all_samples[all_labels == lbl]
+
+            print("Saving in", info[key])
+            torch.save(data_file_contents, info[key][1])
+            
+            
+            
 
 def extract_probabilities(model_path, model_name_prefix, data_cfg):
 #     real_class_0 = torch.load('./models/autoencoder/cifar_real_class_0.pth')['images'].cpu()
@@ -1578,7 +1609,9 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix):
                 },
                 'encode_stage': {
                     'mode': 'encode',
-                    'fake_sample_file': os.path.join(model_path, 'cifar_class_1_generated.pth'),
+                    'fake_sample_file': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_sample_file': os.path.join(model_path, 'cifar_sorted_stylegan.pth'),
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl')
                 },
                 'phi_stage': {
                     'mode': 'cifar_all_phi',
@@ -1608,7 +1641,7 @@ def train_config(key):
         {
             'cifar_1_all': {
                 'ae_stage': {
-                    'n_epochs':30,
+                    'n_epochs':40,
                     'use_adversary':True
                 },
                 'phi_stage': {
@@ -1713,7 +1746,9 @@ if __name__ == '__main__':
     elif opt.mode == 'test_multi':
         test_multi_loader()
     elif opt.mode == 'test_norm':
-        test_stylegan_norm()    
+        test_stylegan_norm()
+    elif opt.mode == 'encode_samples':
+        encode_samples(opt.save_directory, opt.model_name_prefix, data_cfg)
 # Next to do:
 #  - Finish redoing the training procedures
 #  - Finish implementing the get_loaders function and make sure it works with everything
