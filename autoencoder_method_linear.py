@@ -1688,9 +1688,12 @@ if __name__ == '__main__':
 #  also, add noise to all the images and rescale?
     
     
-# Next (Sunday)
-# - encode the data with the trained model (done)
-# - visualize autoencoder again (done)
-# - do rest of experiment
-    
+# Next
+# - update the model visualization function
+# - Make file more readable?
+# - perceptual features (vgg?) (probably needs to be trained on unrelated data)
+# - change to squared norm in pressure loss
+# - Adversary in Z-space rather than e-space for real/fake
+# - Train phis together with encoder using z-space adversary (and nonlinear decoder maybe?)?
+# - Z norm histogram and cosine distances
     
