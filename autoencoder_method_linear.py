@@ -519,9 +519,9 @@ def train_invertible(model, dataloader, n_epochs):
     
 
     def pressure_loss(x, dim=512, eps = 0.1):
-        numerator = np.sqrt(dim)
-        norms = torch.norm(x,dim=1)
-        losses = numerator / (norms + eps)
+        numerator = dim
+        square_norms = x.square().sum(dim=1)
+        losses = numerator / (square_norms + eps)
         total_loss = losses.mean()
         return total_loss  
 
@@ -1103,18 +1103,38 @@ def get_dataloaders(cfg, stage):
 ################################################################################     
 
     
-def view_tensor_images(t, scale=True, resize=False, new_size=224):
+def view_tensor_images(t, scale=True, resize=False, new_size=224, nrow=8):
     if resize:
         resize_func = tv.transforms.Resize(new_size)
         t = resize_func(t)
     if scale:
         t = ((t+1)/2).clamp(0,1)
-    grid = tv.utils.make_grid(t.detach().cpu())
+    grid = tv.utils.make_grid(t.detach().cpu(), nrow=nrow)
     grid = grid.permute(1,2,0).numpy()
     plt.imshow(grid)
     plt.show()
 
     
+def test_vgg(model_path, model_name_prefix, data_cfg):
+    from feature_embeddings import obtain_vgg_features
+
+    dataloader = get_dataloaders(data_cfg, 'ae_stage')
+    batch_0 = dataloader.get_next_batch('augmented')
+    print(len(batch_0))
+    print(batch_0[0].size())
+    print(batch_0[1].size())
+    #view_tensor_images(batch_0)
+    #view_tensor_images(batch_0[:36], resize=True, nrow=6)
+
+    feats = obtain_vgg_features(None, data_batch = batch_0[0][:64], device='cuda:1')
+    
+    print(torch.argmax(feats, dim=1))
+    print(torch.unique(torch.argmax(feats,dim=1)))
+    print(batch_0[1][:64])
+    
+
+    
+
     
 def build_and_train_autoencoder(model_path, model_name_prefix, autoencoder_cfg, data_cfg, train_cfg):
     model = Autoencoder_Model(**autoencoder_cfg)
@@ -1159,9 +1179,17 @@ def build_and_train_invertible(model_path, model_name_prefix, phi_cfg, data_cfg,
 
 
 # Need to rewrite some of this to deal with how the data files are structured
-def encode_samples(model_path, model_name_prefix, data_cfg):
-    model = pickle.load(open(data_cfg.encode_stage.model_file,'rb'))
-    model.encoder.eval()
+def encode_samples(model_path, model_name_prefix, data_cfg, encode_vgg=False):
+    model = None
+    if encode_vgg:
+        print("Applying vgg")
+        model = tv.models.vgg16(pretrained=True).to('cuda:1')
+        model.eval()
+        from feature_embeddings import apply_vgg
+        model_name_prefix = 'vgg16'
+    else:
+        model = pickle.load(open(data_cfg.encode_stage.model_file,'rb'))
+        model.encoder.eval()
     
     # { label0: {train: { z_values:[], images:[], encodings:[] }, test: { z_values, images, encodings},
     #   label1: {train: {...}, test:{...}, ...}
@@ -1198,9 +1226,15 @@ def encode_samples(model_path, model_name_prefix, data_cfg):
                 if i%10==0:
                     print(i)
                 x, y = batch
-                x = x.cuda()
                 
-                encodings = model.encoder(x).detach().cpu()
+                encodings = None
+                if encode_vgg:
+                    encodings = apply_vgg(model, x, device='cuda:1').detach().cpu()
+                else:
+                    x = x.cuda()
+                    encodings = model.encoder(x).detach().cpu()
+
+
                 all_samples.append(encodings)
                 all_labels.append(y)
 
@@ -1583,6 +1617,12 @@ def autoencoder_config(key):
             'linear': True,
             'very_lean': True,
             'use_adversary': True
+        },
+        'nonlinear_ae': {
+            'input_size':32,
+            'linear': False,
+            'very_lean':False,
+            'use_adversary':True
         }
     }
     
@@ -1670,6 +1710,8 @@ if __name__ == '__main__':
         test_stylegan_norm()
     elif opt.mode == 'encode_samples':
         encode_samples(opt.save_directory, opt.model_name_prefix, data_cfg)
+    elif opt.mode == 'encode_samples_vgg':
+        encode_samples(opt.save_directory, opt.model_name_prefix, data_cfg, encode_vgg=True)
     elif opt.mode == 'train_phi':
         build_and_train_invertible(opt.save_directory, opt.model_name_prefix, phi_cfg, data_cfg, train_cfg)
     elif opt.mode == 'extract_probs':
@@ -1678,7 +1720,10 @@ if __name__ == '__main__':
         view_extracted_probabilities(opt.save_directory, opt.model_name_prefix, data_cfg)
     elif opt.mode == 'visualize_model':
         visualize_model(opt.save_directory, opt.model_name_prefix, data_cfg)
+    elif opt.mode == 'test_vgg':
+        test_vgg(opt.save_directory, opt.model_name_prefix, data_cfg)
             
+
 
 # Notes:
 #  is clamping the stylegan outputs a bad idea? Perhaps rescale them instead?
@@ -1696,3 +1741,10 @@ if __name__ == '__main__':
 # - was the problem with the nonlinear model the order of the batch norm/nonlinearity layers? Quite possibly
 # - Z norm histogram and cosine distances
     
+# Next thing: try autoencoder with switched layer order (and phi nets with switched order?)
+# Then: sampling vgg features and visualizing resized ims / classes
+# Then: updated training procedure
+# Also try: much lower pressure coefficient
+
+
+# Note: tried nonlinear autoencoder. Linear one still seems to work better. Should also try a hybrid
