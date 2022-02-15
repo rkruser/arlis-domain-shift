@@ -64,21 +64,21 @@ class block_sample_layer(nn.Module):
         self.resblock = resblock
         
         for _ in range(nlayers-1):
-            layers.append(nonlinearity)
             if batchnorm:
                 layers.append(batchnorm_layer(nmaps))
+            layers.append(nonlinearity) #switched order with batchnorm
             layers.append(get_layer(nmaps))
             
         if resblock:
-            layers.append(nonlinearity)
             if batchnorm:
                 layers.append(batchnorm_layer(nmaps))
+            layers.append(nonlinearity) # switched order with batchnorm
             layers.append(get_layer(nmaps))
             
         if len(layers) == 0:
-            layers.append(nonlinearity)
             if batchnorm:
                 layers.append(batchnorm_layer(nmaps))
+            layers.append(nonlinearity) #switched order with batchnorm
             
         self.last_layer = None
         if downsample or upsample or (not resblock):
@@ -702,13 +702,13 @@ def preprocess_cifar(dataset_dir, save_dir):
 
 
     
-def sample_cifar_stylegan(savedir):
+def sample_cifar_stylegan(savedir, stylegan_file):
     #encoder = pickle.load(open('./models/small_linear_cifar10_encoder/encoder.pkl','rb'))
     
     from models import load_torch_class
     
     #cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()
-    cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '../../repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()
+    cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= stylegan_file).cuda()
     
 
     
@@ -1074,8 +1074,13 @@ def get_dataloaders(cfg, stage):
 
 
     
-    elif mode == 'visualize':
-        pass
+    elif mode == 'visualization':
+        real_dset = Sorted_Dataset(cfg.real, train=True, include_keys=[cfg.encoding_key, 'images'], include_labels=cfg.real_classes)
+        fake_dset = Sorted_Dataset(cfg.fake, train=True, include_keys=['z_values', cfg.encoding_key, 'images'], include_labels=cfg.fake_classes)
+        aug_dset = Sorted_Dataset(cfg.augmented, train=True, include_keys=[cfg.encoding_key, 'images'], include_labels=cfg.augmented_classes)
+        dsets = {'real':real_dset, 'fake':fake_dset, 'augmented':aug_dset}
+        dataloader = Multi_Dataset_Loader(dsets, batch_size=64, shuffle=False, drop_last=False)
+        return dataloader        
 
    
     
@@ -1098,7 +1103,10 @@ def get_dataloaders(cfg, stage):
 ################################################################################     
 
     
-def view_tensor_images(t, scale=True):
+def view_tensor_images(t, scale=True, resize=False, new_size=224):
+    if resize:
+        resize_func = tv.transforms.Resize(new_size)
+        t = resize_func(t)
     if scale:
         t = ((t+1)/2).clamp(0,1)
     grid = tv.utils.make_grid(t.detach().cpu())
@@ -1300,60 +1308,36 @@ def extract_probabilities(model_path, model_name_prefix, data_cfg):
     pickle.dump(stats, open(save_path,'wb'))    
         
     
-def visualize_model(model_path, model_name_prefix, data_cfg):
-    ##### Fake batches ########
-#     fake_class_1 = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['images']
-#     fake_class_1_codes = torch.load('./models/autoencoder/cifar_class_1_generated.pth')['z_values']    
-#     fake_dataloader = torch.utils.data.DataLoader(fake_class_1_codes,
-#                                          batch_size=64,
-#                                          shuffle=False,
-#                                          drop_last=False)
-#     fake_image_dataloader = torch.utils.data.DataLoader(fake_class_1,
-#                                      batch_size=64,
-#                                      shuffle=False,
-#                                      drop_last=False)    
-
-#     fake_batch = next(iter(fake_dataloader)).cpu()
-#     fake_image_batch = next(iter(fake_image_dataloader)).cpu()
+def visualize_model(model_path, model_name_prefix, data_cfg, class_constant_stylegan=1):
+    multi_loader = get_dataloaders(data_cfg, 'visualize_stage')
     
-#     fake_batches = [("fake_class_1", fake_batch, fake_image_batch)]
-    
-#     ##### Real batches ########
-#     real_class_1 = torch.load('./models/autoencoder/cifar_real_class_1.pth')['images']
-#     real_class_1 = real_class_1*2-1    
-#     real_dataloader_1 = torch.utils.data.DataLoader(real_class_1,
-#                                      batch_size=64,
-#                                      shuffle=False,
-#                                      drop_last=False)    
-    
-#     real_class_0 = torch.load('./models/autoencoder/cifar_real_class_0.pth')['images']
-#     real_class_0 = real_class_0*2-1    
-#     real_dataloader_0 = torch.utils.data.DataLoader(real_class_0,
-#                                      batch_size=64,
-#                                      shuffle=False,
-#                                      drop_last=False)
-#     real_batch_class_0 = next(iter(real_dataloader_0)).cpu()
-#     real_batch_class_1 = next(iter(real_dataloader_1)).cpu()
-    
-#     real_batches = [("real_class_0",real_batch_class_0), ("real_class_1", real_batch_class_1)]
-
-    fake_code_loader, fake_image_loader, real_multi_loader = get_dataloaders(data_cfg, 'visualize_stage')
-    fake_code_batch = next(iter(fake_code_dataloader)).cpu()
-    fake_image_batch = next(iter(fake_image_dataloader)).cpu()
-    fake_batches = [("fake", fake_code_batch, fake_image_batch)]
+    fake_batch = multi_loader.get_next_batch('fake')
+    fake_images = fake_batch[2]
+    fake_encoded = fake_batch[1]
+    fake_z = fake_batch[0]
+    fake_batches = [("fake", fake_z, fake_encoded, fake_images)]
     
     real_batches = []
-    for key in real_multi_loader.keys():
-        batch = real_multi_loader.get_next_batch(key).cpu()
-        real_batches.append( (key, batch) )
+    for key in multi_loader.keys():
+        if key != 'fake':
+            batch = multi_loader.get_next_batch(key)
+            real_ims = batch[1]
+            real_encoded = batch[0]
+            real_batches.append( (key, real_encoded, real_ims) )
     
     
     
     ###### Models ########
     from models import load_torch_class
-    cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()    
-    phi_model = pickle.load(open('./models/autoencoder/phi_model_exp_4.pkl','rb')) #note exp2
-    model = pickle.load(open('./models/autoencoder/ae_model_exp_4.pkl','rb'))
+#     cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()    
+#     phi_model = pickle.load(open('./models/autoencoder/phi_model_exp_4.pkl','rb')) #note exp2
+#     model = pickle.load(open('./models/autoencoder/ae_model_exp_4.pkl','rb'))
+    
+    cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= data_cfg.visualize_stage.stylegan_file).cuda()    
+    phi_model = pickle.load(open(data_cfg.visualize_stage.phi_model_file,'rb')) #note exp2
+    model = pickle.load(open(data_cfg.visualize_stage.model_file,'rb'))  
+    
+    
     
     model.encoder.eval()
     model.decoder.eval()
@@ -1363,12 +1347,12 @@ def visualize_model(model_path, model_name_prefix, data_cfg):
     
     with torch.no_grad():
         ##### Loop over fake batches #####
-        for name, z_codes, fake_ims in fake_batches:
+        for name, z_codes, fake_encoded, fake_ims in fake_batches:
 
             
-            reconstructed_fake = model.decoder(model.encoder(fake_ims.cuda())).detach().cpu()
-            fake_encoded = phi_model.z2e(fake_batch.cuda()).detach()
-            fake2real = model.decoder(fake_encoded).detach().cpu()
+            reconstructed_fake = torch.tanh(model.decoder(fake_encoded.cuda())).detach().cpu()
+            z2e_codes = phi_model.z2e(z_codes.cuda()).detach()
+            fake2real = torch.tanh(model.decoder(z2e_codes)).detach().cpu()
             
             print(name, "original")
             view_tensor_images(fake_ims)
@@ -1380,14 +1364,14 @@ def visualize_model(model_path, model_name_prefix, data_cfg):
             # Store these somehow
 
         ##### Loop over real batches #####
-        for name, real_ims in real_batches:
+        for name, real_encoded, real_ims in real_batches:
             # Stylegan beauracracy
             class_constant = torch.zeros(10, device='cuda')
-            class_constant[1] = 1
+            class_constant[class_constant_stylegan] = 1
             classes = class_constant.repeat(real_ims.size(0),1)
             
-            reconstructed_real = model.decoder(model.encoder(real_ims.cuda())).detach().cpu()
-            real_encoded = model.encoder(real_ims.cuda())
+            real_encoded = real_encoded.cuda()
+            reconstructed_real = torch.tanh(model.decoder(real_encoded)).detach().cpu()
             real2stylegan_w = cifar_stylegan_net.mapping(phi_model.e2z(real_encoded), classes)
             real2stylegan = cifar_stylegan_net.synthesis(real2stylegan_w, noise_mode='const', force_fp32=True)
             real2stylegan = real2stylegan.detach().cpu()
@@ -1508,7 +1492,7 @@ def test4():
     
 
     
-def dataset_config(key, dataset_directory, model_path, model_name_prefix):
+def dataset_config(key, dataset_directory, model_path, model_name_prefix, stylegan_file):
     dset_config = edict(
         {
             'cifar_1_all': {
@@ -1550,7 +1534,17 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix):
                     'encoding_key': 'encodings_' + model_name_prefix                     
                 },
                 'visualize_stage': {
-                    
+                    'stylegan_file': stylegan_file,
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'phi_model_file':  os.path.join(model_path, model_name_prefix+'_phi.pkl'),
+                    'mode': 'visualization',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0,2,3,4,5,6,7,8,9],
+                    'encoding_key': 'encodings_' + model_name_prefix                    
                 },
                 'plot_stage': {
                     'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
@@ -1630,8 +1624,9 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', type=str, default='run')
-    parser.add_argument('--save_directory', type=str, default='./models/autoencoder')
+    parser.add_argument('--save_directory', type=str, default='./models/ae2')
     parser.add_argument('--dataset_directory', type=str, default='/mnt/linuxshared/phd-research/data/standard_datasets')
+    parser.add_argument('--stylegan_file', type=str, default='../repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl')
     parser.add_argument('--experiment_prefix', type=str, default='linear_ae_model')
     parser.add_argument('--experiment_suffix', type=str, default=None)
     parser.add_argument('--experiment_number', type=int, default=None)
@@ -1651,14 +1646,14 @@ if __name__ == '__main__':
     if opt.model_name_prefix is None:
         opt.model_name_prefix = opt.experiment_prefix + opt.experiment_suffix
     
-    data_cfg = dataset_config(opt.dataset_config_key, opt.dataset_directory, opt.save_directory, opt.model_name_prefix)
+    data_cfg = dataset_config(opt.dataset_config_key, opt.dataset_directory, opt.save_directory, opt.model_name_prefix, opt.stylegan_file)
     autoencoder_cfg = autoencoder_config(opt.autoencoder_config_key)
     phi_cfg = phi_config(opt.phi_config_key)
     train_cfg = train_config(opt.train_config_key)
     
     
-    if opt.mode == 'run':
-        run_experiment(opt.save_directory, opt.model_name_prefix, autoencoder_cfg, phi_cfg, data_cfg, train_cfg)
+    if opt.mode == 'train_ae':
+        build_and_train_autoencoder(opt.save_directory, opt.model_name_prefix, autoencoder_cfg, data_cfg, train_cfg)        
     elif opt.mode == 'visualize_ae':
         visualize_autoencoder(opt.save_directory, opt.model_name_prefix, data_cfg)
     elif opt.mode == 'visualize':
@@ -1666,7 +1661,7 @@ if __name__ == '__main__':
     elif opt.mode == 'preprocess_cifar':
         preprocess_cifar(opt.dataset_directory, opt.save_directory)
     elif opt.mode == 'sample_stylegan':
-        sample_cifar_stylegan(opt.save_directory)
+        sample_cifar_stylegan(opt.save_directory, opt.stylegan_file)
     elif opt.mode == 'test_sorted':
         test_sorted_dataset()
     elif opt.mode == 'test_multi':
@@ -1681,7 +1676,9 @@ if __name__ == '__main__':
         extract_probabilities(opt.save_directory, opt.model_name_prefix, data_cfg)
     elif opt.mode == 'plot_probs':
         view_extracted_probabilities(opt.save_directory, opt.model_name_prefix, data_cfg)
-        
+    elif opt.mode == 'visualize_model':
+        visualize_model(opt.save_directory, opt.model_name_prefix, data_cfg)
+            
 
 # Notes:
 #  is clamping the stylegan outputs a bad idea? Perhaps rescale them instead?
@@ -1693,7 +1690,9 @@ if __name__ == '__main__':
 # - Make file more readable?
 # - perceptual features (vgg?) (probably needs to be trained on unrelated data)
 # - change to squared norm in pressure loss
+# - Print relative error rather than absolute error (maybe)
 # - Adversary in Z-space rather than e-space for real/fake
 # - Train phis together with encoder using z-space adversary (and nonlinear decoder maybe?)?
+# - was the problem with the nonlinear model the order of the batch norm/nonlinearity layers? Quite possibly
 # - Z norm histogram and cosine distances
     
