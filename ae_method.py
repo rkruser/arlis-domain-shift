@@ -100,13 +100,21 @@ def visualize_autoencoder(model_path, model_name_prefix, data_cfg):
 
     
     
-def build_and_train_invertible(model_path, model_name_prefix, phi_cfg, data_cfg, train_cfg):
-    model = Phi_Model(**phi_cfg)
+def build_and_train_invertible(model_path, model_name_prefix, phi_cfg, data_cfg, train_cfg, load_model=False):
+    model = None
+    model_fullpath = os.path.join(model_path, model_name_prefix+'_phi.pkl')
+    if load_model:
+        print("loading model")
+        print(model_fullpath)
+        model = pickle.load(open(model_fullpath, 'rb'))
+    else:
+        model = Phi_Model(**phi_cfg)
     
     dataloader = get_dataloaders(data_cfg, 'phi_stage')
     
-    model_fullpath = os.path.join(model_path, model_name_prefix+'_phi.pkl')
-    train_invertible(model, dataloader, **train_cfg.phi_stage)
+
+    train_invertible(model, dataloader, **train_cfg.phi_stage, use_adversary=phi_cfg.get('use_adversary',False),
+                     use_friend = phi_cfg.get('use_friend',False))
     
     
     pickle.dump(model, open(model_fullpath,'wb'))
@@ -659,7 +667,11 @@ def autoencoder_config(key):
 
 def phi_config(key):
     cfg = {
-        'linear_ae': {}
+        'linear_ae': {},
+        'adversarial_phi': {
+            'use_adversary':True,
+            'use_friend':False
+            }
     }
     
     return cfg[key]
@@ -716,6 +728,7 @@ if __name__ == '__main__':
     parser.add_argument('--phi_config_key', default='linear_ae')
     parser.add_argument('--dataset_config_key', default='cifar_1_all')
     parser.add_argument('--train_config_key', default='cifar_1_all')
+    parser.add_argument('--load_model', action='store_true')
     opt = parser.parse_args()
     
     if opt.experiment_suffix is None:
@@ -754,7 +767,7 @@ if __name__ == '__main__':
     elif opt.mode == 'encode_samples_vgg':
         encode_samples(opt.model_path, opt.model_name_prefix, data_cfg, encode_vgg=True)
     elif opt.mode == 'train_phi':
-        build_and_train_invertible(opt.model_path, opt.model_name_prefix, phi_cfg, data_cfg, train_cfg)
+        build_and_train_invertible(opt.model_path, opt.model_name_prefix, phi_cfg, data_cfg, train_cfg, load_model=opt.load_model)
     elif opt.mode == 'extract_probs':
         extract_probabilities(opt.model_path, opt.model_name_prefix, data_cfg)
     elif opt.mode == 'plot_probs':

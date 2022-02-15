@@ -425,11 +425,11 @@ class Phi_Model:
         self.z2e_optim = torch.optim.Adam(self.z2e.parameters(), lr=0.0001)
         
         if use_adversary:
-            self.adversary = Small_Classifier(linear=False)
+            self.adversary = Small_Classifier(linear=False).cuda()
             self.adversary_optim = torch.optim.Adam(self.adversary.parameters(),lr=0.0001)
 
         if use_friend:
-            self.friend = Small_Classifier(linear=False)
+            self.friend = Small_Classifier(linear=False).cuda()
             self.friend_optim = torch.optim.Adam(self.friend.parameters(),lr=0.0001)
 
 
@@ -593,41 +593,43 @@ def train_autoencoder(model, dataloader, n_epochs, use_adversary=True, use_featu
     
 
 
-def pressure_loss(x, lmbda=512, eps = 0.1):
+def pressure_loss(x, dim=512, eps = 0.0001):
+    lmbda = dim**(3.0/2) #derivative is -1 at sqrt(dim) where most points live
     square_norms = x.square().sum(dim=1)
     losses = lmbda / (square_norms + eps)
     total_loss = losses.mean()
     return total_loss  
 
 def mse_loss(x,y):
-    return torch.nn.functional.mse_los(x,y)
+    return torch.nn.functional.mse_loss(x,y)
 
 def clf_loss(x,y):
     return torch.nn.functional.binary_cross_entropy_with_logits(x,y)
 
-def reg_loss(x, lmbda=1.0/512):
+def reg_loss(x, dim=512, significance_factor=3):
+    lmbda = 1/(2*np.sqrt(dim)*significance_factor)
     return lmbda*x.square().sum()
 
 
 def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_friend=False):
     lossfunc = mse_loss
-    lmbda_p = 1e-4
+    lmbda_p = 1e-3
     lmbda_a = 1
     lmbda_f = 1
-    lmbda_r = 1e-5
+    lmbda_z_fake = 3
 
     model.e2z.train()
     model.z2e.train()
 
 
     adversary_loss = None
-    friend_loss = None
+    friend_lossfunc = None
     if use_adversary:
         model.adversary.train()
         adversary_loss = clf_loss
     if use_friend:
         model.friend.train()
-        friend_loss = clf_loss
+        friend_lossfunc = clf_loss
 
 
     lossinfo = None
@@ -670,9 +672,9 @@ def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_frien
 
 
                 if use_friend:
-                    y_real_pred = model.adversary(z_real_pred)
-                    y_aug_pred = model.adversary(z_aug_pred)
-                    friend_loss = 0.5*(friend_loss(y_real_pred, y_real) + friend_loss(y_aug_pred, y_aug))
+                    y_real_pred = model.friend(z_real_pred)
+                    y_aug_pred = model.friend(z_aug_pred)
+                    friend_loss = 0.5*(friend_lossfunc(y_real_pred, y_real) + friend_lossfunc(y_aug_pred, y_aug))
                 else:
                     friend_loss = 0
 
@@ -690,9 +692,9 @@ def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_frien
                 e_aug_cycle_loss = lossfunc(e_aug_cycle, e_aug)
                 z_aug_pressure_loss = pressure_loss(z_aug_pred)
                 
-                total_loss = z_fake_loss + e_fake_cycle_loss + e_real_cycle_loss + \
-                               e_aug_cycle_loss + lmbda_p*z_aug_pressure_loss + lmbda_a*adv_loss +\
-                               lmbda_f*friend_loss + lmbda_r*regularizing_loss
+                total_loss = lmbda_z_fake*z_fake_loss + e_fake_cycle_loss + e_real_cycle_loss + \
+                               e_aug_cycle_loss - lmbda_a*adv_loss +\
+                               lmbda_f*friend_loss + lmbda_p*(z_aug_pressure_loss + regularizing_loss)
 
                 if use_friend:
                     model.friend.zero_grad()
@@ -728,7 +730,7 @@ def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_frien
                
                 
 
-            if i>1 and (i-phase)%100 == 0:
+            if i>1 and (i%100==0 or (i+1)%100 ==0):
                 print(lossinfo)
 
             if use_adversary:
