@@ -457,14 +457,18 @@ def test_stylegan_norm():
                     view_tensor_images(item)                    
                     
     
-def get_dataloaders(cfg, stage):
+def get_dataloaders(cfg, stage, include_keys = None, shuffle=None):
     # Load all of cifar, optionally priveliging real_classes (None or a tuple)
     # mode=None, real=None, fake=None, real_classes=None
     
+
     if stage in cfg:
         print("Getting dataloaders for stage", stage)
         cfg = cfg[stage]
-        
+
+    if include_keys is not None:
+        cfg.data_keys = include_keys
+
     mode = cfg.mode
     print("...dataloader mode", mode)
     
@@ -480,7 +484,12 @@ def get_dataloaders(cfg, stage):
         fake_dset = Sorted_Dataset(cfg.fake, train=True, include_keys=cfg.data_keys, include_labels=cfg.fake_classes)
         aug_dset = Sorted_Dataset(cfg.augmented, train=True, include_keys=cfg.data_keys, include_labels=cfg.augmented_classes)
         dsets = {'real':real_dset, 'fake':fake_dset, 'augmented':aug_dset}
-        dataloader = Multi_Dataset_Loader(dsets, batch_size=128, shuffle=True, drop_last=True)
+
+        shuffle_threeway = True
+        if shuffle is not None:
+            print("Manual shuffling spec")
+            shuffle_threeway = shuffle
+        dataloader = Multi_Dataset_Loader(dsets, batch_size=128, shuffle=shuffle_threeway, drop_last=True)
         
         return dataloader
     

@@ -67,8 +67,16 @@ def build_and_train_autoencoder(model_path, model_name_prefix, autoencoder_cfg, 
 def visualize_autoencoder(model_path, model_name_prefix, data_cfg):
     model_fullpath = os.path.join(model_path, model_name_prefix+'_autoencoder.pkl')
     model = pickle.load(open(model_fullpath,'rb'))
+
+    use_features = False
+    include_keys = ['images']
+    if hasattr(model, 'feature_encode') and model.feature_encode is not None:
+        print("Using features")
+        use_features = True
+        include_keys.append('encodings_vgg16')
+
     
-    dataloader = get_dataloaders(data_cfg, 'ae_stage')
+    dataloader = get_dataloaders(data_cfg, 'ae_stage', include_keys = include_keys, shuffle=False)
     for i, batch in enumerate(dataloader):
         if i > 0:
             break
@@ -78,7 +86,17 @@ def visualize_autoencoder(model_path, model_name_prefix, data_cfg):
             ims = batch[key][0][:64]
             view_tensor_images(ims)
             print("reconstructed")
-            view_tensor_images(torch.tanh(model.decoder(model.encoder(ims.cuda()))))
+            
+            ims = ims.cuda()
+            encoded = model.encoder(ims)
+            if use_features:
+                feats = batch[key][1][:64].cuda()
+                encoded_feats = model.feature_encode(feats)
+                encoded = encoded + encoded_feats
+                add_vals, _ = model.feature_decode(encoded)
+                encoded = encoded + add_vals
+
+            view_tensor_images(torch.tanh(model.decoder(encoded)))
 
     
     
@@ -96,7 +114,9 @@ def build_and_train_invertible(model_path, model_name_prefix, phi_cfg, data_cfg,
 
 
 # Need to rewrite some of this to deal with how the data files are structured
-def encode_samples(model_path, model_name_prefix, data_cfg, encode_vgg=False, use_features=False):
+def encode_samples(model_path, model_name_prefix, data_cfg, encode_vgg=False):
+    use_features = False
+
     model = None
     if encode_vgg:
         print("Applying vgg")
@@ -107,6 +127,9 @@ def encode_samples(model_path, model_name_prefix, data_cfg, encode_vgg=False, us
     else:
         model = pickle.load(open(data_cfg.encode_stage.model_file,'rb'))
         model.encoder.eval()
+        if hasattr(model, 'feature_encode') and model.feature_encode is not None:
+            print("Using features")
+            use_features=True
     
     # { label0: {train: { z_values:[], images:[], encodings:[] }, test: { z_values, images, encodings},
     #   label1: {train: {...}, test:{...}, ...}
@@ -147,6 +170,7 @@ def encode_samples(model_path, model_name_prefix, data_cfg, encode_vgg=False, us
                 if i%10==0:
                     print(i)
                 x = batch[0].cuda()
+                y = batch[-1]
                 
                 encodings = None
                 if encode_vgg:
