@@ -1,17 +1,17 @@
 echo "Train ae"
-python autoencoder_method_linear.py --mode train_ae
+python ae_method.py --mode train_ae
 echo "Visualize ae"
-python autoencoder_method_linear.py --mode visualize_ae
+python ae_method.py --mode visualize_ae
 echo "Encode samples"
-python autoencoder_method_linear.py --mode encode_samples
+python ae_method.py --mode encode_samples
 echo "Train phi"
-python autoencoder_method_linear.py --mode train_phi
+python ae_method.py --mode train_phi
 echo "Extract probs"
-python autoencoder_method_linear.py --mode extract_probs
+python ae_method.py --mode extract_probs
 echo "visualize model"
-python autoencoder_method_linear.py --mode visualize_model
+python ae_method.py --mode visualize_model
 echo "Plot probs"
-python autoencoder_method_linear.py --mode plot_probs
+python ae_method.py --mode plot_probs
 
 
 

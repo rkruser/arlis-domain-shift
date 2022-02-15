@@ -1,3 +1,3 @@
-python autoencoder_method_linear.py --mode preprocess_cifar
-python autoencoder_method_linear.py --mode sample_stylegan
+python ae_method.py --mode preprocess_cifar
+python ae_method.py --mode sample_stylegan
 
