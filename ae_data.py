@@ -476,9 +476,9 @@ def get_dataloaders(cfg, stage):
 #         cfg.fake_classes
 #         cfg.augmented_classes
         
-        real_dset = Sorted_Dataset(cfg.real, train=True, include_keys=['images'], include_labels=cfg.real_classes)
-        fake_dset = Sorted_Dataset(cfg.fake, train=True, include_keys=['images'], include_labels=cfg.fake_classes)
-        aug_dset = Sorted_Dataset(cfg.augmented, train=True, include_keys=['images'], include_labels=cfg.augmented_classes)
+        real_dset = Sorted_Dataset(cfg.real, train=True, include_keys=cfg.data_keys, include_labels=cfg.real_classes)
+        fake_dset = Sorted_Dataset(cfg.fake, train=True, include_keys=cfg.data_keys, include_labels=cfg.fake_classes)
+        aug_dset = Sorted_Dataset(cfg.augmented, train=True, include_keys=cfg.data_keys, include_labels=cfg.augmented_classes)
         dsets = {'real':real_dset, 'fake':fake_dset, 'augmented':aug_dset}
         dataloader = Multi_Dataset_Loader(dsets, batch_size=128, shuffle=True, drop_last=True)
         

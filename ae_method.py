@@ -96,7 +96,7 @@ def build_and_train_invertible(model_path, model_name_prefix, phi_cfg, data_cfg,
 
 
 # Need to rewrite some of this to deal with how the data files are structured
-def encode_samples(model_path, model_name_prefix, data_cfg, encode_vgg=False):
+def encode_samples(model_path, model_name_prefix, data_cfg, encode_vgg=False, use_features=False):
     model = None
     if encode_vgg:
         print("Applying vgg")
@@ -112,12 +112,16 @@ def encode_samples(model_path, model_name_prefix, data_cfg, encode_vgg=False):
     #   label1: {train: {...}, test:{...}, ...}
     #    
     
+
+    include_keys = ['images']
+    if use_features:
+        include_keys.append('encodings_vgg16')
     
-    ims_fake = Sorted_Dataset(data_cfg.encode_stage.fake_sample_file, train=True)
-    ims_real = Sorted_Dataset(data_cfg.encode_stage.real_sample_file, train=True)
+    ims_fake = Sorted_Dataset(data_cfg.encode_stage.fake_sample_file, include_keys=include_keys, train=True)
+    ims_real = Sorted_Dataset(data_cfg.encode_stage.real_sample_file, include_keys=include_keys, train=True)
     
-    ims_fake_test = Sorted_Dataset(data_cfg.encode_stage.fake_sample_file, train=False)
-    ims_real_test = Sorted_Dataset(data_cfg.encode_stage.real_sample_file, train=False)    
+    ims_fake_test = Sorted_Dataset(data_cfg.encode_stage.fake_sample_file, include_keys=include_keys, train=False)
+    ims_real_test = Sorted_Dataset(data_cfg.encode_stage.real_sample_file, include_keys=include_keys, train=False)    
     
     loaders = Multi_Dataset_Loader({'ims_real_train':ims_real, 'ims_real_test':ims_real_test, 
                                     'ims_fake_train':ims_fake, 'ims_fake_test':ims_fake_test},
@@ -142,14 +146,19 @@ def encode_samples(model_path, model_name_prefix, data_cfg, encode_vgg=False):
             for i, batch in enumerate(loaders.loaders[key]):
                 if i%10==0:
                     print(i)
-                x, y = batch
+                x = batch[0].cuda()
                 
                 encodings = None
                 if encode_vgg:
                     encodings = apply_vgg(model, x, device='cuda:1').detach().cpu()
                 else:
-                    x = x.cuda()
-                    encodings = model.encoder(x).detach().cpu()
+                    encodings = model.encoder(x)
+                    if use_features:
+                        x_vgg = batch[1].cuda()
+                        x_vgg_encoded = model.feature_encode(x_vgg)
+                        encodings = encodings + x_vgg_encoded
+                        
+                    encodings = encodings.detach().cpu()
 
 
                 all_samples.append(encodings)
@@ -454,7 +463,65 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                     'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
                     'real_classes':[ 1 ],
                     'fake_classes':[ 1 ],
-                    'augmented_classes': [0,2,3,4,5,6,7,8,9]
+                    'augmented_classes': [0,2,3,4,5,6,7,8,9],
+                    'data_keys': ['images']
+                },
+                'encode_stage': {
+                    'mode': 'encode',
+                    'fake_sample_file': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_sample_file': os.path.join(model_path, 'cifar_sorted_stylegan.pth'),
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl')
+                },
+                'phi_stage': {
+                    'mode': 'threeway_encodings',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0,2,3,4,5,6,7,8,9],
+                    'encoding_key': 'encodings_' + model_name_prefix
+                },
+                'prob_stage': {
+                    'mode': 'extract_probs',
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'phi_model_file':  os.path.join(model_path, model_name_prefix+'_phi.pkl'),
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0],
+                    'encoding_key': 'encodings_' + model_name_prefix                     
+                },
+                'visualize_stage': {
+                    'stylegan_file': stylegan_file,
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'phi_model_file':  os.path.join(model_path, model_name_prefix+'_phi.pkl'),
+                    'mode': 'visualization',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0,2,3,4,5,6,7,8,9],
+                    'encoding_key': 'encodings_' + model_name_prefix                    
+                },
+                'plot_stage': {
+                    'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
+                },
+            },
+
+            'cifar_1_all_variation_2': {
+                'ae_stage': {
+                    'mode': 'threeway',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'), # preprocessed standard data
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), # preprocessed fake data
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0,2,3,4,5,6,7,8,9],
+                    'data_keys': ['images', 'encodings_vgg16']
                 },
                 'encode_stage': {
                     'mode': 'encode',
@@ -519,7 +586,19 @@ def train_config(key):
                     'n_epochs':40,
                     
                 }
+            },
+            'cifar_1_all_variation_2': {
+                'ae_stage': {
+                    'n_epochs':40,
+                    'use_adversary':False,
+                    'use_features':True
+                },
+                'phi_stage': {
+                    'n_epochs':40,
+                    
+                }
             }
+
         }
     )
     
@@ -540,6 +619,14 @@ def autoencoder_config(key):
             'linear': False,
             'very_lean':False,
             'use_adversary':True
+        },
+        'mixed_feature_ae': {
+            'input_size':32,
+            'linear': True,
+            'mixed': True,
+            'very_lean':True,
+            'use_adversary':False,
+            'use_features':True
         }
     }
     
@@ -593,7 +680,7 @@ if __name__ == '__main__':
     
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', type=str, default='run')
+    parser.add_argument('--mode', type=str, default='train_ae')
     parser.add_argument('--model_path', type=str, default='./models/ae2')
     parser.add_argument('--dataset_directory', type=str, default=dataset_dir)
     parser.add_argument('--stylegan_file', type=str, default=stylegan_file)

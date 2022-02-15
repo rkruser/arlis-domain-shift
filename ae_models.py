@@ -344,8 +344,8 @@ class Phi_regressor(nn.Module):
 ################################################################################
 ################  Aggregate models
 ################################################################################        
-class Domain_adversary(nn.Module):
-    def __init__(self, linear=True):
+class Small_Classifier(nn.Module):
+    def __init__(self, linear=False):
         super().__init__()
         
         self.linear = linear
@@ -363,31 +363,75 @@ class Domain_adversary(nn.Module):
         else:
             return self.layer2(self.nonlinearity(self.layer1(x))).squeeze(1)
 
-    
+
+class Small_Decoder(nn.Module):
+    def __init__(self, linear=False):
+        super().__init__()
+        if linear:
+            self.nonlinearity = nn.Identity()
+        else:
+            self.nonlinearity = nn.LeakyReLU(0.2,inplace=True)
+        
+        self.block = nn.Sequential(
+            nn.Linear(512,512),
+            self.nonlinearity,
+            nn.Linear(512,512),
+            self.nonlinearity,
+            nn.Linear(512,512)
+            )
+
+        self.predict = nn.Linear(512,1000)
+
+    def forward(self, x):
+        block_out = self.block(x)
+        out = block_out + x
+        predicted = self.predict(out)
+
+        return block_out, predicted
+
+   
     
 class Autoencoder_Model:
-    def __init__(self, input_size=32, linear=True, very_lean=True, use_adversary=True):
+    def __init__(self, input_size=32, linear=True, very_lean=True, use_adversary=False, use_features=False,
+                 mixed=False):
         self.use_adversary = use_adversary
         
-        self.encoder = Encoder(input_size, very_lean=very_lean, all_linear=linear, add_linear=True).cuda()
-        self.decoder = Decoder(input_size, very_lean=very_lean, all_linear=linear, add_linear=True).cuda()
+        encoder_linear = (linear or mixed)
+        decoder_linear = (linear and not mixed)
+
         
-        if self.use_adversary:
-            self.domain_adversary = Domain_adversary(linear=linear).cuda()
+        self.encoder = Encoder(input_size, very_lean=very_lean, all_linear=encoder_linear, add_linear=True).cuda()
+        self.decoder = Decoder(input_size, very_lean=(very_lean and not mixed), all_linear=decoder_linear, add_linear=True).cuda()
         
         self.encoder_optim = torch.optim.Adam(self.encoder.parameters(), lr=0.0001)
         self.decoder_optim = torch.optim.Adam(self.decoder.parameters(), lr=0.0001)
         
         if self.use_adversary:
-            self.domain_adversary_optim = torch.optim.Adam(self.domain_adversary.parameters(), lr=0.0001)
+            self.domain_adversary = Small_Classifier(linear=linear).cuda()
+            self.domain_adversary_optim = torch.optim.Adam(self.domain_adversary.parameters(linear=linear), lr=0.0001)
+
+        if use_features:
+            self.feature_encode = nn.Linear(1000,512).cuda()
+            self.feature_decode = Small_Decoder(linear=mixed).cuda()
+            self.feature_encode_optim = torch.optim.Adam(self.feature_encode.parameters(), lr=0.0001)
+            self.feature_decode_optim = torch.optim.Adam(self.feature_decode.parameters(), lr=0.0001)
+
 
 class Phi_Model:
-    def __init__(self):
+    def __init__(self, use_adversary=False, use_friend=False):
         self.e2z = Phi().cuda()
         self.z2e = Phi().cuda()
         
         self.e2z_optim = torch.optim.Adam(self.e2z.parameters(),lr=0.0001)
         self.z2e_optim = torch.optim.Adam(self.z2e.parameters(), lr=0.0001)
+        
+        if use_adversary:
+            self.adversary = Small_Classifier(linear=False)
+            self.adversary_optim = torch.optim.Adam(self.adversary.parameters(),lr=0.0001)
+
+        if use_friend:
+            self.friend = Small_Classifier(linear=False)
+            self.friend_optim = torch.optim.Adam(self.friend.parameters(),lr=0.0001)
 
 
 
@@ -398,7 +442,7 @@ class Phi_Model:
 
 # dataloader assumed to be a multiloader
 # keys: real, fake, augmented
-def train_autoencoder(model, dataloader, n_epochs, use_adversary=True):
+def train_autoencoder(model, dataloader, n_epochs, use_adversary=True, use_features=False):
     #reconstruction_loss = torch.nn.BCEWithLogitsLoss()
     #reconstruction_loss = torch.nn.MSELoss()
     #reconstruction_loss = torch.nn.L1Loss()
@@ -411,47 +455,65 @@ def train_autoencoder(model, dataloader, n_epochs, use_adversary=True):
     def reg_loss(e):
         return (torch.norm(e.view(e.size(0),-1), dim=1)**2).mean()
     
-    adversary_loss = None
-    if use_adversary:
-        adversary_loss = torch.nn.BCEWithLogitsLoss()
     
     model.encoder.train()
     model.decoder.train()
     
     if use_adversary:
         model.domain_adversary.train()
+        adversary_loss = torch.nn.BCEWithLogitsLoss()
         lmbda_adv = 1
         lmbda_reg = 0.001
     else:
         lmbda_adv = 0
         lmbda_reg = 0
+
+    if use_features:
+        model.feature_encode.train()
+        model.feature_decode.train()
+
     
     phase = 0
-    for epoch in range(n_epochs):
+    for epoch in range(n_epochs): 
         print("Epoch", epoch)
         for i, batch in enumerate(dataloader):
-            x_real, _ = batch['real']
-            x_fake, _ = batch['fake']
-            x_augmented, _ = batch['augmented']
-            
-            x_real = x_real.cuda()
-            y_real = torch.zeros(len(x_real),device=x_real.device) #domain labels
-            
-            x_fake = x_fake.cuda()
-            y_fake = torch.ones(len(x_fake), device=x_fake.device) #domain labels
-            
-            x_augmented = x_augmented.cuda()
+            x_real = batch['real'][0].cuda()
+            x_fake = batch['fake'][0].cuda()
+            x_aug = batch['augmented'][0].cuda()
 
-
+            if use_features:
+                x_real_feats = batch['real'][1].cuda()
+                x_fake_feats = batch['fake'][1].cuda()
+                x_aug_feats = batch['augmented'][1].cuda()
             
-            
+            if use_adversary:
+                y_real = torch.zeros(len(x_real),device=x_real.device) #domain labels
+                y_fake = torch.ones(len(x_fake), device=x_fake.device) #domain labels
+                       
             loss_info = None
             if phase == 0:
                 # train encoder and decoder
                 enc_x_real = model.encoder(x_real)
                 enc_x_fake = model.encoder(x_fake)
-                enc_x_aug = model.encoder(x_augmented)
+                enc_x_aug = model.encoder(x_aug)
  
+                if use_features:
+                    enc_x_real = enc_x_real + model.feature_encode(x_real_feats)
+                    enc_x_fake = enc_x_fake + model.feature_encode(x_fake_feats)
+                    enc_x_aug = enc_x_aug + model.feature_encode(x_aug_feats)
+                    
+                    real_add, recon_x_real_feats = model.feature_decode(enc_x_real)
+                    fake_add, recon_x_fake_feats = model.feature_decode(enc_x_fake)
+                    aug_add, recon_x_aug_feats = model.feature_decode(enc_x_aug)
+
+                    loss_real_feats = l2_lossfunc(recon_x_real_feats, x_real_feats)
+                    loss_fake_feats = l2_lossfunc(recon_x_fake_feats, x_fake_feats)
+                    loss_aug_feats = l2_lossfunc(recon_x_aug_feats, x_aug_feats)
+                else:
+                    recon_real_feats = 0
+                    recon_fake_feats = 0
+                    recon_aug_feats = 0
+                    
                 
                 if use_adversary:
                     predicted_real_domains = model.domain_adversary(enc_x_real)
@@ -462,27 +524,45 @@ def train_autoencoder(model, dataloader, n_epochs, use_adversary=True):
                     adv_loss = 0
                     regularizing_loss = 0
 
+
+                if use_features:
+                    # idea is to undo adding the features
+                    enc_x_real = enc_x_real + real_add
+                    enc_x_fake = enc_x_fake + fake_add
+                    enc_x_aug = enc_x_aug + aug_add
+
+
                 recon_real = torch.tanh(model.decoder(enc_x_real)) #add a variant of tanh?
                 recon_fake = torch.tanh(model.decoder(enc_x_fake))
                 recon_aug = torch.tanh(model.decoder(enc_x_aug))
                 
-                recon_loss = (1.0/3)*(reconstruction_loss(recon_real, x_real) + reconstruction_loss(recon_fake, x_fake) + reconstruction_loss(recon_aug, x_augmented))
+                recon_loss = (1.0/3)*(reconstruction_loss(recon_real, x_real) + reconstruction_loss(recon_fake, x_fake) + reconstruction_loss(recon_aug, x_aug))
+                feats_loss = (1.0/3)*(loss_real_feats + loss_fake_feats + loss_aug_feats)
 
                 
-                total_loss = recon_loss - lmbda_adv*adv_loss +lmbda_reg*regularizing_loss
+                total_loss = recon_loss - lmbda_adv*adv_loss +lmbda_reg*regularizing_loss + feats_loss
                 #total_loss = recon_loss#+regularizing_loss
                 
+                if use_features:
+                    model.feature_encode.zero_grad()
+                    model.feature_decode.zero_grad()
+
                 model.encoder.zero_grad()
                 model.decoder.zero_grad()
                 total_loss.backward()
                 model.encoder_optim.step()
                 model.decoder_optim.step()
+
+                if use_features:
+                    model.feature_encode_optim.step()
+                    model.feature_decode_optim.step()
                 
+
+                lossinfo = "recon loss = {0}".format(recon_loss.item())
                 if use_adversary:
-                    lossinfo = "recon loss = {0}, adv loss = {1}".format(recon_loss.item(), adv_loss.item())
-                else:
-                    lossinfo = "recon loss = {0}".format(recon_loss.item())
-                #lossinfo = "recon loss = {0}".format(recon_loss.item())
+                    lossinfo += ", adv loss = {0}, reg loss = {1}".format(adv_loss.item(), regularizing_loss.item())
+                if use_features:
+                    lossinfo += ", feats loss = {0}".format(feats_loss.item())
                 
                 
             if phase == 1:
@@ -490,6 +570,10 @@ def train_autoencoder(model, dataloader, n_epochs, use_adversary=True):
                
                 enc_x_real = model.encoder(x_real)
                 enc_x_fake = model.encoder(x_fake)
+                if use_features:
+                    enc_x_real += model.feature_encode(x_real_feats)
+                    enc_x_fake += model.feature_encode(x_fake_feats)
+
                 predicted_real_domains = model.domain_adversary(enc_x_real)
                 predicted_fake_domains = model.domain_adversary(enc_x_fake)
                 adv_loss = (1.0/2)*(adversary_loss(predicted_real_domains,y_real)+adversary_loss(predicted_fake_domains, y_fake))
@@ -501,7 +585,7 @@ def train_autoencoder(model, dataloader, n_epochs, use_adversary=True):
                 lossinfo = "adv loss = {0}".format(adv_loss.item())
     
     
-            if i%100 == 0 or i%100 == 1:
+            if (i > 1) and (i-phase)%100 == 0:
                 print(i, lossinfo)
     
             if use_adversary:
@@ -510,26 +594,45 @@ def train_autoencoder(model, dataloader, n_epochs, use_adversary=True):
     
 
 
+def pressure_loss(x, lmbda=512, eps = 0.1):
+    square_norms = x.square().sum(dim=1)
+    losses = lmbda / (square_norms + eps)
+    total_loss = losses.mean()
+    return total_loss  
+
+def mse_loss(x,y):
+    return torch.nn.functional.mse_los(x,y)
+
+def clf_loss(x,y):
+    return torch.nn.functional.binary_cross_entropy_with_logits(x,y)
+
+def reg_loss(x, lmbda=1.0/512):
+    return lmbda*x.square().sum()
 
 
-def train_invertible(model, dataloader, n_epochs):
-    lossfunc = torch.nn.MSELoss()
-    lmbda = 0.05
-    
-
-    def pressure_loss(x, dim=512, eps = 0.1):
-        numerator = dim
-        square_norms = x.square().sum(dim=1)
-        losses = numerator / (square_norms + eps)
-        total_loss = losses.mean()
-        return total_loss  
-
+def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_friend=False):
+    lossfunc = mse_loss
+    lmbda_p = 1e-4
+    lmbda_a = 1
+    lmbda_f = 1
+    lmbda_r = 1e-5
 
     model.e2z.train()
     model.z2e.train()
-  
 
 
+    adversary_loss = None
+    friend_loss = None
+    if use_adversary:
+        model.adversary.train()
+        adversary_loss = clf_loss
+    if use_friend:
+        model.friend.train()
+        friend_loss = clf_loss
+
+
+    lossinfo = None
+    phase = 0
     for n in range(n_epochs):
         print("Epoch", n)
         for i, batch in enumerate(dataloader):
@@ -542,35 +645,93 @@ def train_invertible(model, dataloader, n_epochs):
             e_fake = e_fake.cuda()
             e_real = e_real.cuda()
             e_aug = e_aug.cuda()
+
+            y_real = None
+            y_fake = None
+            y_aug = None
             
-            
-            z_real_pred = model.e2z(e_real)
-            z_fake_pred = model.e2z(e_fake)
-            z_aug_pred = model.e2z(e_aug)
-            
-            e_real_cycle = model.z2e(z_real_pred)
-            e_fake_cycle = model.z2e(z_fake_pred)
-            e_aug_cycle =model.z2e(z_aug_pred)
-            
-            
-            z_fake_loss = lossfunc(z_fake_pred, z_fake)
-            e_fake_cycle_loss = lossfunc(e_fake_cycle, e_fake)
-            e_real_cycle_loss = lossfunc(e_real_cycle, e_real)
-            e_aug_cycle_loss = lossfunc(e_aug_cycle, e_aug)
-            z_aug_pressure_loss = pressure_loss(z_aug_pred)
-            
-            total_loss = z_fake_loss + e_fake_cycle_loss + e_real_cycle_loss + \
-                           e_aug_cycle_loss + lmbda*z_aug_pressure_loss
-            
-            
+            if use_adversary:
+                y_real = torch.ones(len(e_real), device=e_real.device)
+                y_fake = torch.zeros(len(e_fake), device=e_fake.device)
+                y_aug = torch.zeros(len(e_aug), device=e_aug.device)
             
 
-            model.z2e.zero_grad()
-            model.e2z.zero_grad()
-            total_loss.backward()
-            model.z2e_optim.step()
-            model.e2z_optim.step()
+            if phase == 0:
+                z_real_pred = model.e2z(e_real)
+                z_fake_pred = model.e2z(e_fake)
+                z_aug_pred = model.e2z(e_aug)
+
+
+                if use_adversary:
+                    y_real_pred = model.adversary(z_real_pred)
+                    y_fake_pred = model.adversary(z_fake_pred)
+                    adv_loss = 0.5*(adversary_loss(y_real_pred, y_real) + adversary_loss(y_fake_pred, y_fake))
+                else:
+                    adv_loss = 0
+
+
+                if use_friend:
+                    y_real_pred = model.adversary(z_real_pred)
+                    y_aug_pred = model.adversary(z_aug_pred)
+                    friend_loss = 0.5*(friend_loss(y_real_pred, y_real) + friend_loss(y_aug_pred, y_aug))
+                else:
+                    friend_loss = 0
+
+
+                
+                e_real_cycle = model.z2e(z_real_pred)
+                e_fake_cycle = model.z2e(z_fake_pred)
+                e_aug_cycle =model.z2e(z_aug_pred)
+                
+                
+                regularizing_loss = reg_loss(z_aug_pred) #might be useful to counterbalance pressure
+                z_fake_loss = lossfunc(z_fake_pred, z_fake)
+                e_fake_cycle_loss = lossfunc(e_fake_cycle, e_fake)
+                e_real_cycle_loss = lossfunc(e_real_cycle, e_real)
+                e_aug_cycle_loss = lossfunc(e_aug_cycle, e_aug)
+                z_aug_pressure_loss = pressure_loss(z_aug_pred)
+                
+                total_loss = z_fake_loss + e_fake_cycle_loss + e_real_cycle_loss + \
+                               e_aug_cycle_loss + lmbda_p*z_aug_pressure_loss + lmbda_a*adv_loss +\
+                               lmbda_f*friend_loss + lmbda_r*regularizing_loss
+
+                if use_friend:
+                    model.friend.zero_grad()
+                model.z2e.zero_grad()
+                model.e2z.zero_grad()
+                total_loss.backward()
+                model.z2e_optim.step()
+                model.e2z_optim.step()
+                if use_friend:
+                    model.friend_optim.step()
+
+                lossinfo = "  {5}: z_fake_loss={0}, e_fake_cycle_loss={1}, e_real_cycle_loss={2}, e_aug_cycle_loss={3}, z_aug_pressure_loss={4}, reg_loss={6}".format(z_fake_loss.item(), e_fake_cycle_loss.item(), e_real_cycle_loss.item(), e_aug_cycle_loss.item(), z_aug_pressure_loss.item(), i, regularizing_loss.item())
+
+                if use_adversary:
+                    lossinfo += ", adv_loss={0}".format(adv_loss.item())
+                if use_friend:
+                    lossinfo += ", friend_loss={0}".format(friend_loss.item()) 
                 
 
-            if i%100 == 0:
-                print("  {5}: z_fake_loss={0}, e_fake_cycle_loss={1}, e_real_cycle_loss={2}, e_aug_cycle_loss={3}, z_aug_pressure_loss={4}".format(z_fake_loss.item(), e_fake_cycle_loss.item(), e_real_cycle_loss.item(), e_aug_cycle_loss.item(), z_aug_pressure_loss.item(), i))
+            elif phase == 1:
+                z_real_pred = model.e2z(e_real)
+                z_fake_pred = model.e2z(e_fake)
+                
+                y_real_pred = model.adversary(z_real_pred)
+                y_fake_pred = model.adversary(z_fake_pred)
+
+                adv_loss = 0.5*(adversary_loss(y_real_pred, y_real) + adversary_loss(y_fake_pred, y_fake))
+                model.adversary.zero_grad()
+                adv_loss.backward()
+                model.adversary_optim.step()
+
+                lossinfo = "adv loss = {0}".format(adv_loss.item())
+               
+                
+
+            if i>1 and (i-phase)%100 == 0:
+                print(lossinfo)
+
+            if use_adversary:
+                phase = 1-phase
+
