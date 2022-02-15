@@ -384,8 +384,7 @@ class Small_Decoder(nn.Module):
 
     def forward(self, x):
         block_out = self.block(x)
-        out = block_out + x
-        predicted = self.predict(out)
+        predicted = self.predict(block_out)
 
         return block_out, predicted
 
