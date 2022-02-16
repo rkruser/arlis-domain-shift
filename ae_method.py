@@ -673,8 +673,8 @@ def phi_config(key):
     cfg = {
         'linear_ae': {},
         'adversarial_phi': {
-            'use_adversary':True,
-            'use_friend':True
+            'use_adversary':False,
+            'use_friend':False
             }
     }
     

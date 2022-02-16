@@ -11,6 +11,12 @@ import os
 from utils import EasyDict as edict
 
 
+
+##
+global_lr = 0.001
+
+
+
 ################################################################################
 ################  Neural net helper functions 
 ################################################################################
@@ -137,7 +143,7 @@ class Encoder(nn.Module):
         initial_layers = []
         
         
-        exponent = int(np.log2(size)+0.001)
+        exponent = int(np.log2(size)+global_lr)
         max_exponent = 9
         
         if exponent == 5:
@@ -229,7 +235,7 @@ class Decoder(nn.Module):
             self.nonlinearity = nn.LeakyReLU(0.2,inplace=True)
         
         
-        exponent = int(np.log2(size)+0.001)
+        exponent = int(np.log2(size)+global_lr)
         count = max(exponent-7, 0)
         min_exponent = 5
         
@@ -402,18 +408,18 @@ class Autoencoder_Model:
         self.encoder = Encoder(input_size, very_lean=very_lean, all_linear=encoder_linear, add_linear=True).cuda()
         self.decoder = Decoder(input_size, very_lean=(very_lean and not mixed), all_linear=decoder_linear, add_linear=True).cuda()
         
-        self.encoder_optim = torch.optim.Adam(self.encoder.parameters(), lr=0.0001)
-        self.decoder_optim = torch.optim.Adam(self.decoder.parameters(), lr=0.0001)
+        self.encoder_optim = torch.optim.Adam(self.encoder.parameters(), lr=global_lr)
+        self.decoder_optim = torch.optim.Adam(self.decoder.parameters(), lr=global_lr)
         
         if self.use_adversary:
             self.domain_adversary = Small_Classifier(linear=linear).cuda()
-            self.domain_adversary_optim = torch.optim.Adam(self.domain_adversary.parameters(linear=linear), lr=0.0001)
+            self.domain_adversary_optim = torch.optim.Adam(self.domain_adversary.parameters(linear=linear), lr=global_lr)
 
         if use_features:
             self.feature_encode = nn.Linear(1000,512).cuda()
             self.feature_decode = Small_Decoder(linear=mixed).cuda()
-            self.feature_encode_optim = torch.optim.Adam(self.feature_encode.parameters(), lr=0.0001)
-            self.feature_decode_optim = torch.optim.Adam(self.feature_decode.parameters(), lr=0.0001)
+            self.feature_encode_optim = torch.optim.Adam(self.feature_encode.parameters(), lr=global_lr)
+            self.feature_decode_optim = torch.optim.Adam(self.feature_decode.parameters(), lr=global_lr)
 
 
 class Phi_Model:
@@ -421,16 +427,16 @@ class Phi_Model:
         self.e2z = Phi().cuda()
         self.z2e = Phi().cuda()
         
-        self.e2z_optim = torch.optim.Adam(self.e2z.parameters(),lr=0.0001)
-        self.z2e_optim = torch.optim.Adam(self.z2e.parameters(), lr=0.0001)
+        self.e2z_optim = torch.optim.Adam(self.e2z.parameters(),lr=global_lr)
+        self.z2e_optim = torch.optim.Adam(self.z2e.parameters(), lr=global_lr)
         
         if use_adversary:
             self.adversary = Small_Classifier(linear=False).cuda()
-            self.adversary_optim = torch.optim.Adam(self.adversary.parameters(),lr=0.0001)
+            self.adversary_optim = torch.optim.Adam(self.adversary.parameters(),lr=global_lr)
 
         if use_friend:
             self.friend = Small_Classifier(linear=False).cuda()
-            self.friend_optim = torch.optim.Adam(self.friend.parameters(),lr=0.0001)
+            self.friend_optim = torch.optim.Adam(self.friend.parameters(),lr=global_lr)
 
 
 
@@ -601,6 +607,16 @@ def pressure_loss(x, lmbda_1 = 0.5*(512**(1.5)), lmbda_2 = 1/(2*(512**0.5)*(3**4
     total_loss = (inward_pressure+outward_pressure).mean()
     return total_loss  
 
+def ring_pressure_loss(x, r2=512, w=31, significance_factor = 3, eps=1e-5):
+    ring_lmbda = (w**2) / (2*(r2-w))
+    reg_lmbda = ring_lmbda / ((significance_factor*w)**2)
+    x2 = x.square().sum(dim=1)
+    ring = ring_lmbda / ((x2-r2).abs() + eps)
+    reg = reg_lmbda*x2
+    total_loss = (ring+reg).mean()
+    return total_loss
+
+
 def mse_loss(x,y):
     return torch.nn.functional.mse_loss(x,y)
 
@@ -609,12 +625,23 @@ def clf_loss(x,y):
 
 
 
-def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_friend=False, print_every=200):
+def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_friend=False, print_every=200, pressure='ring'):
     lossfunc = mse_loss
-    lmbda_p = 3
     lmbda_a = 1
     lmbda_f = 1
-    lmbda_z_fake = 3
+    lmbda_z_fake = 1
+    lmbda_e_fake = 1
+
+    lmbda_aug_cycle = 1
+    lmbda_cycle = 1
+
+    if pressure == 'ring':
+        print("using ring pressure")
+        p_lossfunc = ring_pressure_loss
+        lmbda_p = 1
+    else:
+        p_lossfunc = pressure_loss
+        lmbda_p = 3
 
     model.e2z.train()
     model.z2e.train()
@@ -634,6 +661,35 @@ def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_frien
     phase = 0
     for n in range(n_epochs):
         print("Epoch", n)
+        if n < 10:
+            print("no adversary, no pressure, no cycle, only bidirectinal targets")
+            lmbda_a = 0
+            lmbda_p = 0
+            lmbda_aug_cycle = 0
+            lmbda_cycle = 0.05
+        elif n < 20:
+            print("add cycle loss")
+            lmbda_a = 0
+            lmbda_p = 0
+            lmbda_aug_cycle = 0.05
+            lmbda_cycle = 1
+        else:
+            if (n // 5)%2 == 0:
+                # Use adversary but no pressure
+                print("adversary, no pressure, aug cycle")
+                lmbda_a = 1 
+                lmbda_p = 0
+                lmbda_aug_cycle = 1
+                lmbda_cycle = 1
+
+            else:
+                print("pressure, no adversary, aug cycle")
+                lmbda_a = 0
+                lmbda_p = 0.05
+                lmbda_aug_cycle = 1
+                lmbda_cycle = 1
+
+
         for i, batch in enumerate(dataloader):
             z_fake, e_fake, _ = batch['fake']
             e_real, _ = batch['real']
@@ -683,16 +739,29 @@ def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_frien
                 e_real_cycle = model.z2e(z_real_pred)
                 e_fake_cycle = model.z2e(z_fake_pred)
                 e_aug_cycle =model.z2e(z_aug_pred)
+
                 
+                e_fake_pred = model.z2e(z_fake)
+                z_fake_cycle = model.e2z(e_fake_pred)
                 
+                # z2e loss
+                e_fake_loss = lossfunc(e_fake_pred, e_fake)
+                z_fake_cycle_loss = lossfunc(z_fake_cycle, z_fake)
+
+                #e2z loss
                 z_fake_loss = lossfunc(z_fake_pred, z_fake)
+
+                # cycle losses
                 e_fake_cycle_loss = lossfunc(e_fake_cycle, e_fake)
                 e_real_cycle_loss = lossfunc(e_real_cycle, e_real)
                 e_aug_cycle_loss = lossfunc(e_aug_cycle, e_aug)
-                z_aug_pressure_loss = pressure_loss(z_aug_pred)
+
+                # pressure losses
+                z_aug_pressure_loss = p_lossfunc(z_aug_pred)
                 
-                total_loss = lmbda_z_fake*z_fake_loss + e_fake_cycle_loss + e_real_cycle_loss + \
-                               e_aug_cycle_loss - lmbda_a*adv_loss +\
+                total_loss = lmbda_z_fake*z_fake_loss + lmbda_e_fake*e_fake_loss + \
+                               lmbda_cycle*(e_fake_cycle_loss + e_real_cycle_loss + z_fake_cycle_loss) + \
+                               lmbda_aug_cycle*e_aug_cycle_loss - lmbda_a*adv_loss +\
                                lmbda_f*friend_loss + lmbda_p*z_aug_pressure_loss
 
                 if use_friend:
@@ -714,9 +783,9 @@ def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_frien
                     if use_friend:
                         lossinfo += ", friend_loss={0}".format(friend_loss.item()) 
     
-                    z_norms = {'real':torch.norm(z_real_pred,dim=1).mean().item(),
-                               'fake':torch.norm(z_fake_pred,dim=1).mean().item(),
-                               'aug':torch.norm(z_aug_pred,dim=1).mean().item()}
+                    z_norms = {'real':torch.norm(z_real_pred,dim=1).square().mean().item(),
+                               'fake':torch.norm(z_fake_pred,dim=1).square().mean().item(),
+                               'aug':torch.norm(z_aug_pred,dim=1).square().mean().item()}
     
     
     
