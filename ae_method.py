@@ -242,6 +242,7 @@ def extract_probabilities(model_path, model_name_prefix, data_cfg):
         #e_codes = []
         e_differences = []
         e_norms = []
+        z_norms = []
         logpriors = []
         z2e_jacobian_probs = []
         e2z_jacobian_probs = []
@@ -260,8 +261,10 @@ def extract_probabilities(model_path, model_name_prefix, data_cfg):
 
             
             z_predicted = z_predicted.detach()
-            z_log_priors = log_priors(z_predicted.cpu())
+            z_log_priors = log_priors(z_predicted)
             logpriors.append(z_log_priors)
+            z_norms.append(torch.norm(z_predicted.cpu(),dim=1))
+    
             
             z_predicted.requires_grad_(True)
             e_reconstructed = phi_model.z2e(z_predicted)
@@ -285,6 +288,7 @@ def extract_probabilities(model_path, model_name_prefix, data_cfg):
         stats[name].e2z_jacobian_probs = torch.cat(e2z_jacobian_probs)
         stats[name].total_z2e_probs = torch.cat(total_z2e_probs)
         stats[name].total_e2z_probs = torch.cat(total_e2z_probs)
+        stats[name].z_norms = torch.cat(z_norms)
         
         
     
@@ -424,10 +428,10 @@ def view_extracted_probabilities(model_path, model_name_prefix, data_cfg):
     plt.legend()
     plt.show()     
     
-    plt.title("difference norms")
-    plt.hist(data.real.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
-    plt.hist(data.fake.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.title("z norms")
+    plt.hist(data.real.z_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.z_norms.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.z_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
     plt.legend()
     plt.show()      
     
@@ -580,7 +584,7 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                     'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
                     'real_classes':[ 1 ],
                     'fake_classes':[ 1 ],
-                    'augmented_classes': [0],
+                    'augmented_classes': [0, 2, 3, 4, 5],
                     'encoding_key': 'encodings_' + model_name_prefix                     
                 },
                 'visualize_stage': {
@@ -626,7 +630,7 @@ def train_config(key):
                     'use_features':True
                 },
                 'phi_stage': {
-                    'n_epochs':40,
+                    'n_epochs':80,
                     
                 }
             }
@@ -670,7 +674,7 @@ def phi_config(key):
         'linear_ae': {},
         'adversarial_phi': {
             'use_adversary':True,
-            'use_friend':False
+            'use_friend':True
             }
     }
     
@@ -709,7 +713,7 @@ if __name__ == '__main__':
     if 'jacobswks20' in hostname:
         dataset_dir = '../../datasets'
         stylegan_file = '../../repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl'
-    elif 'ryen' in hostname:
+    elif 'LV426' in hostname:
         dataset_dir = '/mnt/linuxshared/phd-research/data/standard_datasets'
         stylegan_file = '../repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl'
 
@@ -779,26 +783,9 @@ if __name__ == '__main__':
             
 
 
-# Notes:
-#  is clamping the stylegan outputs a bad idea? Perhaps rescale them instead?
-#  also, add noise to all the images and rescale?
-    
-    
-# Next
-# - update the model visualization function
-# - Make file more readable?
-# - perceptual features (vgg?) (probably needs to be trained on unrelated data)
-# - change to squared norm in pressure loss
-# - Print relative error rather than absolute error (maybe)
-# - Adversary in Z-space rather than e-space for real/fake
-# - Train phis together with encoder using z-space adversary (and nonlinear decoder maybe?)?
-# - was the problem with the nonlinear model the order of the batch norm/nonlinearity layers? Quite possibly
-# - Z norm histogram and cosine distances
-    
-# Next thing: try autoencoder with switched layer order (and phi nets with switched order?)
-# Then: sampling vgg features and visualizing resized ims / classes
-# Then: updated training procedure
-# Also try: much lower pressure coefficient
+# Mystery:
+#  Why are z norms at test time much different than at training time?
+# (remember, log priors are scaled in computation, but that doesn't seem like enough)
+# This is a huge discrepancy and there is a decent change it's a simple code flaw
+# also, what if there is no adversary loss but still this improved pressure loss?
 
-
-# Note: tried nonlinear autoencoder. Linear one still seems to work better. Should also try a hybrid
