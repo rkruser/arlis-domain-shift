@@ -593,11 +593,12 @@ def train_autoencoder(model, dataloader, n_epochs, use_adversary=True, use_featu
     
 
 
-def pressure_loss(x, dim=512, eps = 0.0001):
-    lmbda = dim**(3.0/2) #derivative is -1 at sqrt(dim) where most points live
+# 3 is "significance factor" (in 3**4 express)
+def pressure_loss(x, lmbda_1 = 0.5*(512**(1.5)), lmbda_2 = 1/(2*(512**0.5)*(3**4)), eps = 1e-5):
     square_norms = x.square().sum(dim=1)
-    losses = lmbda / (square_norms + eps)
-    total_loss = losses.mean()
+    outward_pressure = lmbda_1 / (square_norms + eps)
+    inward_pressure = lmbda_2 * square_norms
+    total_loss = (inward_pressure+outward_pressure).mean()
     return total_loss  
 
 def mse_loss(x,y):
@@ -606,14 +607,11 @@ def mse_loss(x,y):
 def clf_loss(x,y):
     return torch.nn.functional.binary_cross_entropy_with_logits(x,y)
 
-def reg_loss(x, dim=512, significance_factor=3):
-    lmbda = 1/(2*np.sqrt(dim)*significance_factor)
-    return lmbda*x.square().sum()
 
 
-def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_friend=False):
+def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_friend=False, print_every=200):
     lossfunc = mse_loss
-    lmbda_p = 1e-3
+    lmbda_p = 3
     lmbda_a = 1
     lmbda_f = 1
     lmbda_z_fake = 3
@@ -663,6 +661,8 @@ def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_frien
                 z_aug_pred = model.e2z(e_aug)
 
 
+
+
                 if use_adversary:
                     y_real_pred = model.adversary(z_real_pred)
                     y_fake_pred = model.adversary(z_fake_pred)
@@ -685,7 +685,6 @@ def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_frien
                 e_aug_cycle =model.z2e(z_aug_pred)
                 
                 
-                regularizing_loss = reg_loss(z_aug_pred) #might be useful to counterbalance pressure
                 z_fake_loss = lossfunc(z_fake_pred, z_fake)
                 e_fake_cycle_loss = lossfunc(e_fake_cycle, e_fake)
                 e_real_cycle_loss = lossfunc(e_real_cycle, e_real)
@@ -694,7 +693,7 @@ def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_frien
                 
                 total_loss = lmbda_z_fake*z_fake_loss + e_fake_cycle_loss + e_real_cycle_loss + \
                                e_aug_cycle_loss - lmbda_a*adv_loss +\
-                               lmbda_f*friend_loss + lmbda_p*(z_aug_pressure_loss + regularizing_loss)
+                               lmbda_f*friend_loss + lmbda_p*z_aug_pressure_loss
 
                 if use_friend:
                     model.friend.zero_grad()
@@ -706,12 +705,22 @@ def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_frien
                 if use_friend:
                     model.friend_optim.step()
 
-                lossinfo = "  {5}: z_fake_loss={0}, e_fake_cycle_loss={1}, e_real_cycle_loss={2}, e_aug_cycle_loss={3}, z_aug_pressure_loss={4}, reg_loss={6}".format(z_fake_loss.item(), e_fake_cycle_loss.item(), e_real_cycle_loss.item(), e_aug_cycle_loss.item(), z_aug_pressure_loss.item(), i, regularizing_loss.item())
 
-                if use_adversary:
-                    lossinfo += ", adv_loss={0}".format(adv_loss.item())
-                if use_friend:
-                    lossinfo += ", friend_loss={0}".format(friend_loss.item()) 
+                if i > 1 and (i%print_every == 0 or (i+1)%print_every==0):
+                    lossinfo = "  {5}: z_fake_loss={0}, e_fake_cycle_loss={1}, e_real_cycle_loss={2}, e_aug_cycle_loss={3}, z_aug_pressure_loss={4}".format(z_fake_loss.item(), e_fake_cycle_loss.item(), e_real_cycle_loss.item(), e_aug_cycle_loss.item(), z_aug_pressure_loss.item(), i)
+    
+                    if use_adversary:
+                        lossinfo += ", adv_loss={0}".format(adv_loss.item())
+                    if use_friend:
+                        lossinfo += ", friend_loss={0}".format(friend_loss.item()) 
+    
+                    z_norms = {'real':torch.norm(z_real_pred,dim=1).mean().item(),
+                               'fake':torch.norm(z_fake_pred,dim=1).mean().item(),
+                               'aug':torch.norm(z_aug_pred,dim=1).mean().item()}
+    
+    
+    
+                    lossinfo += '\n' + str(z_norms)
                 
 
             elif phase == 1:
@@ -730,7 +739,7 @@ def train_invertible(model, dataloader, n_epochs, use_adversary=False, use_frien
                
                 
 
-            if i>1 and (i%100==0 or (i+1)%100 ==0):
+            if i>1 and (i%print_every==0 or (i+1)%print_every ==0):
                 print(lossinfo)
 
             if use_adversary:
