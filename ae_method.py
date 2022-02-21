@@ -786,6 +786,6 @@ if __name__ == '__main__':
 # Mystery:
 #  Why are z norms at test time much different than at training time?
 # (remember, log priors are scaled in computation, but that doesn't seem like enough)
-# This is a huge discrepancy and there is a decent change it's a simple code flaw
+# This is a huge discrepancy and there is a decent chance it's a simple code flaw
 # also, what if there is no adversary loss but still this improved pressure loss?
 
