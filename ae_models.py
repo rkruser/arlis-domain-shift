@@ -298,20 +298,20 @@ class Decoder(nn.Module):
 
 
 class Phi(nn.Module):
-    def __init__(self, nblocks=4):
+    def __init__(self, nblocks=4, hidden=1024, num_in=512, num_out=512):
         super().__init__()
         
-        self.first_layer = nn.Linear(512,1024)
+        self.first_layer = nn.Linear(num_in,hidden)
         
         layers = []
         for _ in range(nblocks):
-            layers.append(get_fc_resblock_layer(1024))
+            layers.append(get_fc_resblock_layer(hidden))
             
         self.main_layers = nn.Sequential(*layers)
             
         self.last_layer = nn.Sequential(
                             nn.LeakyReLU(0.2,inplace=True),
-                            nn.Linear(1024,512)
+                            nn.Linear(hidden,num_out)
                             )
         
     def forward(self, x):
