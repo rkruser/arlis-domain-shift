@@ -351,15 +351,15 @@ class Phi_regressor(nn.Module):
 ################  Aggregate models
 ################################################################################        
 class Small_Classifier(nn.Module):
-    def __init__(self, linear=False):
+    def __init__(self, linear=False, in_feats = 512):
         super().__init__()
         
         self.linear = linear
         if linear:
-            self.layer1 = nn.Linear(512,1)
+            self.layer1 = nn.Linear(in_feats,1)
             
         else:
-            self.layer1 = nn.Linear(512,512)
+            self.layer1 = nn.Linear(in_feats,512)
             self.nonlinearity = nn.LeakyReLU(0.2,inplace=True)
             self.layer2 = nn.Linear(512,1)
         

@@ -501,6 +501,21 @@ def get_dataloaders(cfg, stage, include_keys = None, shuffle=None):
         dataloader = Multi_Dataset_Loader(dsets, batch_size=128, shuffle=True, drop_last=True)
         return dataloader
 
+    if mode == 'threeway_combined':
+        real_dset = Sorted_Dataset(cfg.real, train=True, include_keys=cfg.data_keys, include_labels=cfg.real_classes)
+        fake_dset = Sorted_Dataset(cfg.fake, train=True, include_keys=['z_values']+cfg.data_keys, include_labels=cfg.fake_classes)
+        aug_dset = Sorted_Dataset(cfg.augmented, train=True, include_keys=cfg.data_keys, include_labels=cfg.augmented_classes)
+        dsets = {'real':real_dset, 'fake':fake_dset, 'augmented':aug_dset}
+
+        shuffle_threeway = True
+        if shuffle is not None:
+            print("Manual shuffling spec")
+            shuffle_threeway = shuffle
+        dataloader = Multi_Dataset_Loader(dsets, batch_size=128, shuffle=shuffle_threeway, drop_last=True)
+        
+        return dataloader
+
+
     elif mode == 'extract_probs':
         real_dset = Sorted_Dataset(cfg.real, train=False, include_keys=[cfg.encoding_key], include_labels=cfg.real_classes)
         fake_dset = Sorted_Dataset(cfg.fake, train=False, include_keys=[cfg.encoding_key], include_labels=cfg.fake_classes)

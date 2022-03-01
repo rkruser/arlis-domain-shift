@@ -63,6 +63,18 @@ def build_and_train_autoencoder(model_path, model_name_prefix, autoencoder_cfg, 
 
     pickle.dump(model, open(model_fullpath, 'wb'))
 
+def build_and_train_combined_autoencoder(model_path, model_name_prefix, autoencoder_cfg, data_cfg, train_cfg):
+    import ae_combined
+
+    model = ae_combined.Combined_Autoencoder(**autoencoder_cfg)
+    dataloader = get_dataloaders(data_cfg, 'ae_stage')
+    
+    model_fullpath = os.path.join(model_path, model_name_prefix+'_autoencoder.pkl')
+    
+    ae_combined.train_combined(model, dataloader, **train_cfg.ae_stage)
+
+    pickle.dump(model, open(model_fullpath, 'wb'))
+
 
 def visualize_autoencoder(model_path, model_name_prefix, data_cfg):
     model_fullpath = os.path.join(model_path, model_name_prefix+'_autoencoder.pkl')
@@ -603,7 +615,20 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                 'plot_stage': {
                     'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
                 },
+            },
+            'cifar_1_all_combined': {
+                'ae_stage': {
+                    'mode': 'threeway_combined',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'), # preprocessed standard data
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), # preprocessed fake data
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0,2,3,4,5,6,7,8,9],
+                    'data_keys': ['images', 'encodings_vgg16']
+                },
             }
+
         }
     )
     
@@ -633,8 +658,21 @@ def train_config(key):
                     'n_epochs':80,
                     
                 }
+            },
+            'combined': {
+                'ae_stage': {
+                    'n_epochs':30,
+                    'use_features':True,
+                    'ring_loss_after':10, #start using ring loss after this many epochs
+                    'ring_loss_max':10000, # stop using ring loss after this many
+                    'lmbda_norm': 1,
+                    'lmbda_cosine': 1,
+                    'lmbda_recon': 1,
+                    'lmbda_feat': 1,
+                    'lmbda_adv': 1,
+                    'lmbda_ring': 1
+                }
             }
-
         }
     )
     
@@ -663,7 +701,12 @@ def autoencoder_config(key):
             'very_lean':True,
             'use_adversary':False,
             'use_features':True
-        }
+        },
+        'combined_ae': {
+            'global_lr':0.001,
+            'use_features':True,
+            'device':'cuda:0',
+        },
     }
     
     return cfg[key]
@@ -780,6 +823,8 @@ if __name__ == '__main__':
         visualize_model(opt.model_path, opt.model_name_prefix, data_cfg)
     elif opt.mode == 'test_vgg':
         test_vgg(opt.model_path, opt.model_name_prefix, data_cfg)
+    elif opt.mode == 'train_combined':
+        build_and_train_combined_autoencoder(opt.model_path, opt.model_name_prefix, autoencoder_cfg, data_cfg, train_cfg)
             
 
 
