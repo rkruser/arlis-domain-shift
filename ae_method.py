@@ -661,16 +661,16 @@ def train_config(key):
             },
             'combined': {
                 'ae_stage': {
-                    'n_epochs':30,
+                    'n_epochs':100,
                     'use_features':True,
-                    'ring_loss_after':10, #start using ring loss after this many epochs
+                    'ring_loss_after':50, #start using ring loss after this many epochs
                     'ring_loss_max':10000, # stop using ring loss after this many
                     'lmbda_norm': 1,
                     'lmbda_cosine': 1,
                     'lmbda_recon': 1,
                     'lmbda_feat': 1,
                     'lmbda_adv': 1,
-                    'lmbda_ring': 1
+                    'lmbda_ring': 0.05
                 }
             }
         }
@@ -703,7 +703,7 @@ def autoencoder_config(key):
             'use_features':True
         },
         'combined_ae': {
-            'global_lr':0.001,
+            'global_lr':0.0001,
             'use_features':True,
             'device':'cuda:0',
         },

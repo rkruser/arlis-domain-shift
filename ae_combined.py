@@ -102,12 +102,12 @@ class Combined_Autoencoder:
 
 
     def train(self):
-        for model in self.modules:
-            model.train()
+        for key in self.modules:
+            self.modules[key].train()
 
     def eval(self):
-        for model in self.modules:
-            model.eval()
+        for key in self.modules:
+            self.modules[key].eval()
 
 
     # Think about how to do the normalization
@@ -196,21 +196,19 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
                    lmbda_norm = 1, lmbda_cosine=1, lmbda_recon=1, lmbda_feat=1, lmbda_adv=1,
                    lmbda_ring=1
                    ):
+
+    model.train()
+
     l1_lossfunc = torch.nn.MSELoss()
     l2_lossfunc = torch.nn.L1Loss()
     bce_lossfunc = torch.nn.BCEWithLogitsLoss()
-   
-    """
-     def ring_pressure():
-         pass
-     def z_regularization():
-         pass
-    """
 
+    def recon_lossfunc(x,y):
+        return l1_lossfunc(x,y)+l2_lossfunc(x,y)
 
     phase = 0
     for epoch in range(n_epochs):
-        print("epoch",epoch)
+        print("*******epoch",epoch)
         for i, batch in enumerate(dataloader):
             x_real = batch['real'][0].cuda()
             x_fake = batch['fake'][1].cuda()
@@ -237,6 +235,7 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
                 # Z losses and adversary losses
                 z_norm_loss = (z_fake_pred_norms - z_fake_norms).square().mean()
                 z_cosine_loss = 1 - (z_fake_sphere*z_fake_pred_sphere).sum(dim=1).mean()
+                # use l2 instead of cosine? or does it not matter?
 
                 z_real_label_pred = model.adversary(z_real_pred_norms, z_real_pred_sphere)
                 z_real_label = torch.ones(z_real_label_pred.size(),device=z_real_label_pred.device)
@@ -256,10 +255,14 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
                 x_fake_recon, x_fake_recon_feats = model.decode(z_fake_pred_norms, z_fake_pred_sphere)
                 x_aug_recon, x_aug_recon_feats = model.decode(z_aug_pred_norms, z_aug_pred_sphere)
 
+                x_real_recon = torch.tanh(x_real_recon)
+                x_fake_recon = torch.tanh(x_fake_recon)
+                x_aug_recon = torch.tanh(x_aug_recon)
+
 
                 # Reconstruction losses
-                recon_loss = l2_lossfunc(x_real_recon, x_real) + l2_lossfunc(x_fake_recon, x_fake) + l2_lossfunc(x_aug_recon, x_aug)
-                recon_loss = (1.0/3)*recon_loss.mean()
+                recon_loss = recon_lossfunc(x_real_recon, x_real) + recon_lossfunc(x_fake_recon, x_fake) + recon_lossfunc(x_aug_recon, x_aug)
+                recon_loss = (1.0/3)*recon_loss
 
                 if use_features:
                     recon_feat_loss = l2_lossfunc(x_real_recon_feats, x_real_feats) + l2_lossfunc(x_fake_recon_feats, x_fake_feats) + l2_lossfunc(x_aug_recon_feats, x_aug_feats)
@@ -267,11 +270,12 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
                 else:
                     recon_feat_loss = torch.tensor(0.0)
 
-                # Tracking losses
+                # Tracking the losses
                 loss_str = "z_norm_loss: {0}, z_cosine_loss: {1}, recon_loss: {2}\nrecon_feat_loss: {3}, adv_loss: {4}, ring_loss: {5}".format(z_norm_loss.item(), z_cosine_loss.item(), recon_loss.item(), recon_feat_loss.item(), adv_loss.item(), ring_loss.item())
-                # Tracking z norms
+                # Tracking the z norms
                 norm_str = "real_norms: {0}, fake_norms: {1}".format(z_real_pred_norms.mean().item(), z_fake_pred_norms.mean().item())
                 loss_str = loss_str + '\n' + norm_str
+                loss_str += '\n'+str(z_aug_pred_norms[:20].detach().cpu())
 
 
                 # Add all losses and step optimizer
@@ -302,7 +306,7 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
 
                 loss_str = "adv_loss: {0}".format(adv_loss.item())
 
-            if (i>0) and ((i%100 == 0) or (i%100 == 1)):
+            if (i>1) and ((i%100 == 0) or (i%100 == 1)):
                 print(i)
                 print(loss_str)
 
