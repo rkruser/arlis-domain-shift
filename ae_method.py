@@ -698,7 +698,24 @@ def train_config(key):
                     'lmbda_ring': 0.05,
                     'significance':5,
                 }
+            },
+            'combined_ae_simple': {
+                'ae_stage': {
+                    'n_epochs':200,
+                    'use_features':True,
+                    'ring_loss_after':10, #start using ring loss after this many epochs
+                    'ring_loss_max':10000, # stop using ring loss after this many
+                    'lmbda_norm': 1,
+                    'lmbda_cosine': 1,
+                    'lmbda_recon': 0.5,
+                    'lmbda_feat': 0.5,
+                    'lmbda_adv': 1,
+                    'lmbda_ring': 0.02,
+                    'significance':5,
+                    'use_simple_ring_loss': True
+                }
             }
+
         }
     )
     
@@ -733,6 +750,13 @@ def autoencoder_config(key):
             'use_features':True,
             'device':'cuda:0',
         },
+        'combined_ae_simple': {
+            'global_lr':0.0001,
+            'use_features':True,
+            'device':'cuda:0',
+            'use_simple_nets':True
+        },
+
     }
     
     return cfg[key]

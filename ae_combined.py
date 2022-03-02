@@ -80,11 +80,30 @@ class Feature_Decoder(nn.Module):
 # Phi after feature encoder, not before?
 
 class Combined_Autoencoder:
-    def __init__(self, global_lr=0.001, use_features=True, device='cuda:0'):
+    def __init__(self, global_lr=0.001, use_features=True, device='cuda:0', use_simple_nets=False):
 
         self.modules = edict()
-        self.modules.encoder = Encoder(32, ncolors=3, lean=False, very_lean=False, all_linear=False, add_linear=False).to(device)
-        self.modules.decoder = Decoder(32, ncolors=3, lean=False, very_lean=False, all_linear=False, add_linear=False).to(device)
+
+
+        self.use_simple_nets = use_simple_nets
+        if use_simple_nets:
+            self.modules.encoder = nn.Sequential(
+                nn.Linear(3072,1024),
+                nn.LeakyReLU(0.2, inplace=True),
+                nn.Linear(1024,512)
+            ).cuda()
+
+            self.modules.decoder = nn.Sequential(
+                nn.Linear(512,1024),
+                nn.LeakyReLU(0.2, inplace=True),
+                nn.Linear(1024,3072)
+            ).cuda()
+
+        else:
+            self.modules.encoder = Encoder(32, ncolors=3, lean=False, very_lean=False, all_linear=False, add_linear=False).to(device)
+            self.modules.decoder = Decoder(32, ncolors=3, lean=False, very_lean=False, all_linear=False, add_linear=False).to(device)
+
+
         self.modules.e2z = Phi(num_out=513).to(device) # 513 due to separate norm and direction
         self.modules.z2e = Phi(num_in=513).to(device)
         self.modules.adversary = Small_Classifier(linear=False, in_feats=513).to(device)
@@ -114,6 +133,9 @@ class Combined_Autoencoder:
 
     # Think about how to do the normalization
     def encode(self, x, features=None):
+        if self.use_simple_nets:
+            x = x.reshape(x.size(0), -1)
+
         e = self.modules.encoder(x)
         e = e.reshape(e.size(0),-1)
 
@@ -141,8 +163,14 @@ class Combined_Autoencoder:
         else:
             features = None
         
-        e = e.reshape(e.size(0), 32, 4, 4)
+        if not self.use_simple_nets:
+            e = e.reshape(e.size(0), 32, 4, 4)
+
         x = self.modules.decoder(e)
+
+        if self.use_simple_nets:
+            x = x.reshape(x.size(0), 3, 32, 32)
+
         return x, features
         
 
@@ -204,7 +232,7 @@ def simple_ring_lossfunc(x, dim=512, significance=3, sigma=0.7):
 
 def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_after=10, ring_loss_max=10000,
                    lmbda_norm = 1, lmbda_cosine=1, lmbda_recon=1, lmbda_feat=1, lmbda_adv=1,
-                   lmbda_ring=1, significance=3,
+                   lmbda_ring=1, significance=3, use_simple_ring_loss = False
                    ):
 
     model.train()
@@ -212,6 +240,11 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
     l1_lossfunc = torch.nn.MSELoss()
     l2_lossfunc = torch.nn.L1Loss()
     bce_lossfunc = torch.nn.BCEWithLogitsLoss()
+
+    if use_simple_ring_loss:
+        apply_ring_loss = simple_ring_lossfunc
+    else:
+        apply_ring_loss = ring_lossfunc
 
     def recon_lossfunc(x,y):
         return l1_lossfunc(x,y)+l2_lossfunc(x,y)
@@ -255,7 +288,7 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
                 adv_loss = (1.0/2)*adv_loss
 
                 if (epoch >= ring_loss_after) and (epoch <= ring_loss_max):
-                    ring_loss = ring_lossfunc(z_aug_pred_norms, significance=significance)
+                    ring_loss = apply_ring_loss(z_aug_pred_norms, significance=significance)
                 else:
                     ring_loss = torch.tensor(0.0)
 
