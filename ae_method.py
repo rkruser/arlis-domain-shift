@@ -627,6 +627,18 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                     'augmented_classes': [0,2,3,4,5,6,7,8,9],
                     'data_keys': ['images', 'encodings_vgg16']
                 },
+                'visualize_stage': {
+                    'stylegan_file': stylegan_file,
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'mode': 'visualization_combined',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0,2,3,4,5,6,7,8,9],
+                },
+
             }
 
         }
@@ -661,16 +673,17 @@ def train_config(key):
             },
             'combined': {
                 'ae_stage': {
-                    'n_epochs':100,
+                    'n_epochs':200,
                     'use_features':True,
-                    'ring_loss_after':50, #start using ring loss after this many epochs
+                    'ring_loss_after':10, #start using ring loss after this many epochs
                     'ring_loss_max':10000, # stop using ring loss after this many
                     'lmbda_norm': 1,
                     'lmbda_cosine': 1,
-                    'lmbda_recon': 1,
-                    'lmbda_feat': 1,
+                    'lmbda_recon': 0.5,
+                    'lmbda_feat': 0.5,
                     'lmbda_adv': 1,
-                    'lmbda_ring': 0.05
+                    'lmbda_ring': 0.05,
+                    'significance':5,
                 }
             }
         }

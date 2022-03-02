@@ -194,7 +194,7 @@ def ring_lossfunc(x, dim=512, significance=3, sigma=0.7, k=10, eps=1e-4):
 
 def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_after=10, ring_loss_max=10000,
                    lmbda_norm = 1, lmbda_cosine=1, lmbda_recon=1, lmbda_feat=1, lmbda_adv=1,
-                   lmbda_ring=1
+                   lmbda_ring=1, significance=3,
                    ):
 
     model.train()
@@ -245,7 +245,7 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
                 adv_loss = (1.0/2)*adv_loss
 
                 if (epoch >= ring_loss_after) and (epoch <= ring_loss_max):
-                    ring_loss = ring_lossfunc(z_aug_pred_norms)
+                    ring_loss = ring_lossfunc(z_aug_pred_norms, significance=significance)
                 else:
                     ring_loss = torch.tensor(0.0)
 
@@ -275,7 +275,8 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
                 # Tracking the z norms
                 norm_str = "real_norms: {0}, fake_norms: {1}".format(z_real_pred_norms.mean().item(), z_fake_pred_norms.mean().item())
                 loss_str = loss_str + '\n' + norm_str
-                loss_str += '\n'+str(z_aug_pred_norms[:20].detach().cpu())
+                loss_str += '\nz_aug_norm_diffs = {0}'.format((z_aug_pred_norms-512**0.5).abs().mean().item())
+                #loss_str += '\n'+str(z_aug_pred_norms[:20].detach().cpu())
 
 
                 # Add all losses and step optimizer
@@ -312,6 +313,176 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
 
 
             phase = 1-phase
+
+
+
+
+### Extracting info ####
+
+def extract_probabilities_combined(model_path, model_name_prefix, data_cfg):
+    multi_loader = get_dataloaders(data_cfg, 'prob_stage')   
+    
+    model = pickle.load(open(data_cfg.prob_stage.model_file,'rb'))
+    model.eval()    
+    
+    
+
+    from model_functions import jacobian, log_priors
+
+    
+    stats = edict()
+    #for name, dataloader in [("class_0", class_0_dataloader), ("class_1", class_1_dataloader),("fake_class_1",fake_class_1_dataloader)]:
+        
+    for name in multi_loader.keys():
+        dataloader = multi_loader.loaders[name]
+        
+        print(name)
+        #e_codes = []
+        e_differences = []
+        e_norms = []
+        z_norms = []
+        logpriors = []
+        z2e_jacobian_probs = []
+        e2z_jacobian_probs = []
+        total_z2e_probs = []
+        total_e2z_probs = []
+        for i, batch in enumerate(dataloader):
+            print("  {0} of {1}".format(i,len(dataloader)))
+            ims = batch[0]
+            ims = ims.cuda()
+            e_c = self.modules.encoder(x)
+            e_c = e_c.reshape(e_c.size(0),-1)
+
+            if model.use_features:
+                features = batch[1]
+                features = features.cuda()
+                e_c = self.modules.feature_encode(e_c,features)
+           
+
+            e_c = e_c.detach()
+            e_c.requires_grad_(True)
+            z_predicted = model.modules.e2z(e_c)
+
+            forward_jacobians = -jacobian(e_c, z_predicted).detach().cpu()
+            e2z_jacobian_probs.append(forward_jacobians)
+
+            
+            z_predicted = z_predicted.detach()
+            z_log_priors = log_priors(z_predicted)
+            logpriors.append(z_log_priors)
+            z_norms.append(torch.norm(z_predicted.cpu(),dim=1))
+    
+            
+            z_predicted.requires_grad_(True)
+            e_reconstructed = model.modules.z2e(z_predicted)
+            inv_jacobians = jacobian(z_predicted, e_reconstructed).detach().cpu()
+            z2e_jacobian_probs.append(inv_jacobians)
+            
+            diffs = (e_c - e_reconstructed).detach().cpu()
+            e_differences.append(diffs)
+            e_norms.append(torch.norm(diffs,dim=1))
+            
+            
+            total_z2e_probs.append(z_log_priors+inv_jacobians)
+            total_e2z_probs.append(z_log_priors+forward_jacobians)
+        
+        stats[name] = edict()
+        #stats[name].e_codes = torch.cat(e_codes)
+        stats[name].e_differences = torch.cat(e_differences)
+        stats[name].e_norms = torch.cat(e_norms)
+        stats[name].log_priors = torch.cat(logpriors)
+        stats[name].z2e_jacobian_probs = torch.cat(z2e_jacobian_probs)
+        stats[name].e2z_jacobian_probs = torch.cat(e2z_jacobian_probs)
+        stats[name].total_z2e_probs = torch.cat(total_z2e_probs)
+        stats[name].total_e2z_probs = torch.cat(total_e2z_probs)
+        stats[name].z_norms = torch.cat(z_norms)
+        
+        
+    
+    # 1. Encode the real data, detach encodings from graph
+    # 2. Run encodings through e2z and z2e, get logprobs and log priors
+    # 3. Plot (3 graphs: jacobian dets, priors, and combined)
+    
+    print(stats.keys())
+    for key in stats:
+        print(stats[key].keys())
+        
+    save_path = os.path.join(model_path, model_name_prefix+'_extracted.pkl')
+    pickle.dump(stats, open(save_path,'wb'))    
+
+
+def visualize_model_combined(model_path, model_name_prefix, data_cfg, class_constant_stylegan=1):
+    multi_loader = get_dataloaders(data_cfg, 'visualize_stage')
+    
+    fake_batch = multi_loader.get_next_batch('fake')
+    fake_images = fake_batch[1]
+    fake_features = fake_batch[2]
+    fake_z = fake_batch[0]
+    fake_batches = [("fake", fake_z, fake_features, fake_images)]
+    
+    real_batches = []
+    for key in multi_loader.keys():
+        if key != 'fake':
+            batch = multi_loader.get_next_batch(key)
+            real_ims = batch[0]
+            real_features = batch[1]
+            real_batches.append( (key, real_features, real_ims) )
+    
+    
+    ###### Models ########
+    from models import load_torch_class
+#     cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= '/cfarhomes/krusinga/storage/repositories/stylegan2-ada-pytorch/pretrained/cifar10.pkl').cuda()    
+#     phi_model = pickle.load(open('./models/autoencoder/phi_model_exp_4.pkl','rb')) #note exp2
+#     model = pickle.load(open('./models/autoencoder/ae_model_exp_4.pkl','rb'))
+    
+    cifar_stylegan_net = load_torch_class('stylegan2-ada-cifar10', filename= data_cfg.visualize_stage.stylegan_file).cuda()    
+    model = pickle.load(open(data_cfg.visualize_stage.model_file,'rb'))  
+    
+    
+    
+    model.eval()
+    cifar_stylegan_net.eval()
+    
+    with torch.no_grad():
+        ##### Loop over fake batches #####
+        for name, z_codes, fake_features, fake_ims in fake_batches:
+            fake_encoded_norm, fake_encoded_code = model.encode(fake_ims, features=fake_features)
+            reconstructed_fake, _ = model.decode(fake_encoded_norm, fake_encoded_code)
+            reconstructed_fake = torch.tanh(reconstructed_fake).detach().cpu()
+            z2e_codes = phi_model.z2e(z_codes.cuda()).detach()
+            fake2real = torch.tanh(model.decoder(z2e_codes)).detach().cpu()
+            
+            print(name, "original")
+            view_tensor_images(fake_ims)
+            print(name, "Reconstructed image through autoencoder")
+            view_tensor_images(reconstructed_fake)
+            print(name, "z_codes decoded via autoencoder")
+            view_tensor_images(fake2real)
+            
+            # Store these somehow
+
+        ##### Loop over real batches #####
+        for name, real_features, real_ims in real_batches:
+            # Stylegan beauracracy
+            class_constant = torch.zeros(10, device='cuda')
+            class_constant[class_constant_stylegan] = 1
+            classes = class_constant.repeat(real_ims.size(0),1)
+            
+
+            real_encoded_norm, real_encoded_code = model.encode(real_ims, features=real_features)
+            reconstructed_real, _ = model.decode(real_encoded_norm, real_encoded_code)
+            reconstructed_real = torch.tanh(reconstructed_real).detach().cpu()
+
+            real2stylegan_w = cifar_stylegan_net.mapping(real_encoded_norm*real_encoded_code, classes)
+            real2stylegan = cifar_stylegan_net.synthesis(real2stylegan_w, noise_mode='const', force_fp32=True)
+            real2stylegan = real2stylegan.detach().cpu()
+            
+            print(name, "original")
+            view_tensor_images(real_ims)
+            print(name, "Reconstructed image through autoencoder")
+            view_tensor_images(reconstructed_real)
+            print(name, "Encodings decoded via stylegan")
+            view_tensor_images(real2stylegan)            
 
 
 
