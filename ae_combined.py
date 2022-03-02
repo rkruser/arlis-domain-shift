@@ -418,7 +418,7 @@ def extract_probabilities_combined(model_path, model_name_prefix, data_cfg):
 
             
             # Save the predicted norms
-            z_norm = z_norm.detach().squeeze(1)
+            z_norm = z_norm.detach().cpu().squeeze(1)
             z_norms.append(z_norm)
 
             # detach the 512-dim z and compute log priors

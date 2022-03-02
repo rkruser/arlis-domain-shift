@@ -441,9 +441,9 @@ def view_extracted_probabilities(model_path, model_name_prefix, data_cfg):
     plt.show()     
     
     plt.title("z norms")
-    plt.hist(data.real.z_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
-    plt.hist(data.fake.z_norms.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.z_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
+    plt.hist(data.real.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
     plt.legend()
     plt.show()      
     
