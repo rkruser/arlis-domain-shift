@@ -904,6 +904,9 @@ if __name__ == '__main__':
     elif opt.mode == 'visualize_model_combined':
         from ae_combined import visualize_model_combined
         visualize_model_combined(opt.model_path, opt.model_name_prefix, data_cfg)
+    elif opt.mode == 'plot_probs_combined':
+        from ae_combined import view_extracted_probabilities_combined
+        view_extracted_probabilities_combined(opt.model_path, opt.model_name_prefix, data_cfg)
 
            
 

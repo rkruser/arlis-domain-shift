@@ -389,9 +389,26 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
 
 ### Extracting info ####
 
+
+# View the images corresponding to the top and bottom values
+def view_top_and_bottom(values, ims, title=''):
+    assert(len(values) == len(ims))
+    print('**************'+title+'****************')
+    inds = torch.argsort(values)
+    top_inds = inds[-64:]
+    bottom_inds = inds[:64].flip(0)
+    print("Top images")
+    view_tensor_images(ims[top_inds])
+    print("Bottom images")
+    view_tensor_images(ims[bottom_inds])
+
+
+
 def extract_probabilities_combined(model_path, model_name_prefix, data_cfg):
     print("In extract probs combined")
     multi_loader = get_dataloaders(data_cfg, 'prob_stage')   
+
+
     
     model = pickle.load(open(data_cfg.prob_stage.model_file,'rb'))
     model.eval()    
@@ -500,24 +517,89 @@ def extract_probabilities_combined(model_path, model_name_prefix, data_cfg):
 
 
 
+def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cfg):
+    # note the off-manifold scores are norms here, not squared norms
+    
+    #data = pickle.load(open('./models/autoencoder/extracted_info_exp_4.pkl', 'rb'))
+    data = pickle.load(open(data_cfg.plot_stage.prob_sample_file,'rb'))
 
-# View the images corresponding to the top and bottom values
-def view_top_and_bottom(values, ims):
-    inds = torch.argsort(values)
-    top_inds = inds[-64:]
-    bottom_inds = inds[:64].flip(0)
+    ######### View top and bottom of each ###########3
+    real_images = torch.load(data_cfg.visualize_stage.real)[1]['test']['images']
+    fake_images = torch.load(data_cfg.visualize_stage.fake)[1]['test']['images']
+    aug_images = torch.load(data_cfg.visualize_stage.augmented)[0]['test']['images']
 
+    real_znorms = data['real']['z_norms']
+    real_e2z = data['real']['e2z_jacobian_probs']
+    real_z2e = data['real']['z2e_jacobian_probs']
 
-    print("Top images")
-    view_tensor_images(ims[top_inds])
+    fake_znorms = data['fake']['z_norms']
+    fake_e2z = data['fake']['e2z_jacobian_probs']
+    fake_z2e = data['fake']['z2e_jacobian_probs']
 
-    print("Bottom images")
-    view_tensor_images(ims[bottom_inds])
+    aug_znorms = data['augmented']['z_norms']
+    aug_e2z = data['augmented']['e2z_jacobian_probs']
+    aug_z2e = data['augmented']['z2e_jacobian_probs']
 
-    # sort values, get sorted indices
-    # take top/bottom 64
-    # invert bottom
-    # view_tensor_images on the corresponding images
+    view_top_and_bottom(real_znorms, real_images, 'Real cars, z norms')
+    view_top_and_bottom(real_e2z, real_images, 'Real cars, e2z')
+    view_top_and_bottom(real_z2e, real_images, 'Real cars, z2e')
+
+    view_top_and_bottom(fake_znorms, fake_images, 'Fake cars, z norms')
+    view_top_and_bottom(fake_e2z, fake_images, 'Fake cars, e2z')
+    view_top_and_bottom(fake_z2e, fake_images, 'Fake cars, z2e')
+
+    view_top_and_bottom(aug_znorms, aug_images, 'Real planes, z norms')
+    view_top_and_bottom(aug_e2z, aug_images, 'Real planes, e2z')
+    view_top_and_bottom(aug_z2e, aug_images, 'Real planes, z2e')
+
+    ###################
+
+    
+    
+    plt.title("logpriors")
+    plt.hist(data.real.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
+    plt.legend()
+    plt.show()
+    
+    plt.title("e2z jacobians")
+    plt.hist(data.real.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
+    plt.legend()
+    plt.show()    
+    
+    
+    plt.title("e2z combined")
+    plt.hist(data.real.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
+    plt.legend()
+    plt.show()       
+    
+    plt.title("z2e jacobians")
+    plt.hist(data.real.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
+    plt.legend()
+    plt.show()     
+    
+    
+    plt.title("z2e combined")
+    plt.hist(data.real.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
+    plt.legend()
+    plt.show()     
+    
+    plt.title("z norms")
+    plt.hist(data.real.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
+    plt.legend()
+    plt.show()      
+
 
 
 
