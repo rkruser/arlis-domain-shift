@@ -1,4 +1,6 @@
 from ae_models import *
+from ae_data import *
+from ae_method import view_tensor_images
 from utils import EasyDict as edict
 
 
@@ -192,6 +194,14 @@ def ring_lossfunc(x, dim=512, significance=3, sigma=0.7, k=10, eps=1e-4):
     total_loss = (ring_loss+reg_loss).mean()
     return total_loss
 
+
+def simple_ring_lossfunc(x, dim=512, significance=3, sigma=0.7):
+    T = dim**(0.5)
+    S = significance*sigma
+    loss = torch.min(x - (T-S), -x + (T+S)).clamp(0)
+    return loss.mean()
+
+
 def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_after=10, ring_loss_max=10000,
                    lmbda_norm = 1, lmbda_cosine=1, lmbda_recon=1, lmbda_feat=1, lmbda_adv=1,
                    lmbda_ring=1, significance=3,
@@ -350,13 +360,13 @@ def extract_probabilities_combined(model_path, model_name_prefix, data_cfg):
             print("  {0} of {1}".format(i,len(dataloader)))
             ims = batch[0]
             ims = ims.cuda()
-            e_c = self.modules.encoder(x)
+            e_c = model.modules.encoder(ims)
             e_c = e_c.reshape(e_c.size(0),-1)
 
             if model.use_features:
                 features = batch[1]
                 features = features.cuda()
-                e_c = self.modules.feature_encode(e_c,features)
+                e_c = model.modules.feature_encode(e_c,features)
            
 
             e_c = e_c.detach()
@@ -446,11 +456,10 @@ def visualize_model_combined(model_path, model_name_prefix, data_cfg, class_cons
     with torch.no_grad():
         ##### Loop over fake batches #####
         for name, z_codes, fake_features, fake_ims in fake_batches:
-            fake_encoded_norm, fake_encoded_code = model.encode(fake_ims, features=fake_features)
+            fake_encoded_norm, fake_encoded_code = model.encode(fake_ims.cuda(), features=fake_features.cuda())
             reconstructed_fake, _ = model.decode(fake_encoded_norm, fake_encoded_code)
-            reconstructed_fake = torch.tanh(reconstructed_fake).detach().cpu()
-            z2e_codes = phi_model.z2e(z_codes.cuda()).detach()
-            fake2real = torch.tanh(model.decoder(z2e_codes)).detach().cpu()
+            fake2real = torch.tanh(reconstructed_fake).detach().cpu()
+
             
             print(name, "original")
             view_tensor_images(fake_ims)
@@ -469,11 +478,11 @@ def visualize_model_combined(model_path, model_name_prefix, data_cfg, class_cons
             classes = class_constant.repeat(real_ims.size(0),1)
             
 
-            real_encoded_norm, real_encoded_code = model.encode(real_ims, features=real_features)
+            real_encoded_norm, real_encoded_code = model.encode(real_ims.cuda(), features=real_features.cuda())
             reconstructed_real, _ = model.decode(real_encoded_norm, real_encoded_code)
             reconstructed_real = torch.tanh(reconstructed_real).detach().cpu()
 
-            real2stylegan_w = cifar_stylegan_net.mapping(real_encoded_norm*real_encoded_code, classes)
+            real2stylegan_w = cifar_stylegan_net.mapping(real_encoded_norm.unsqueeze(1)*real_encoded_code, classes)
             real2stylegan = cifar_stylegan_net.synthesis(real2stylegan_w, noise_mode='const', force_fp32=True)
             real2stylegan = real2stylegan.detach().cpu()
             

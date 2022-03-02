@@ -406,14 +406,14 @@ def view_extracted_probabilities(model_path, model_name_prefix, data_cfg):
     plt.title("logpriors")
     plt.hist(data.real.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.hist(data.augmented.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
     plt.legend()
     plt.show()
     
     plt.title("e2z jacobians")
     plt.hist(data.real.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.hist(data.augmented.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
     plt.legend()
     plt.show()    
     
@@ -421,14 +421,14 @@ def view_extracted_probabilities(model_path, model_name_prefix, data_cfg):
     plt.title("e2z combined")
     plt.hist(data.real.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.hist(data.augmented.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
     plt.legend()
     plt.show()       
     
     plt.title("z2e jacobians")
     plt.hist(data.real.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.hist(data.augmented.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
     plt.legend()
     plt.show()     
     
@@ -436,14 +436,14 @@ def view_extracted_probabilities(model_path, model_name_prefix, data_cfg):
     plt.title("z2e combined")
     plt.hist(data.real.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.hist(data.augmented.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
     plt.legend()
     plt.show()     
     
     plt.title("z norms")
     plt.hist(data.real.z_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.z_norms.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.z_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real airplanes")
+    plt.hist(data.augmented.z_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real aug")
     plt.legend()
     plt.show()      
     
@@ -627,16 +627,29 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                     'augmented_classes': [0,2,3,4,5,6,7,8,9],
                     'data_keys': ['images', 'encodings_vgg16']
                 },
-                'visualize_stage': {
-                    'stylegan_file': stylegan_file,
+                'prob_stage': {
+                    'mode': 'extract_probs_combined',
                     'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
-                    'mode': 'visualization_combined',
                     'real': os.path.join(model_path, 'cifar_sorted.pth'),
                     'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
                     'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
                     'real_classes':[ 1 ],
                     'fake_classes':[ 1 ],
-                    'augmented_classes': [0,2,3,4,5,6,7,8,9],
+                    'augmented_classes': [0, 2, 3],
+                },
+                'visualize_stage': {
+                    'stylegan_file': stylegan_file,
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'mode': 'visualize_combined',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0,2,3],
+                },
+                'plot_stage': {
+                    'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
                 },
 
             }
@@ -838,7 +851,14 @@ if __name__ == '__main__':
         test_vgg(opt.model_path, opt.model_name_prefix, data_cfg)
     elif opt.mode == 'train_combined':
         build_and_train_combined_autoencoder(opt.model_path, opt.model_name_prefix, autoencoder_cfg, data_cfg, train_cfg)
-            
+    elif opt.mode == 'extract_probs_combined':
+        from ae_combined import extract_probabilities_combined
+        extract_probabilities_combined(opt.model_path, opt.model_name_prefix, data_cfg)
+    elif opt.mode == 'visualize_model_combined':
+        from ae_combined import visualize_model_combined
+        visualize_model_combined(opt.model_path, opt.model_name_prefix, data_cfg)
+
+           
 
 
 # Mystery:

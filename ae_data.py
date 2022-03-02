@@ -524,6 +524,14 @@ def get_dataloaders(cfg, stage, include_keys = None, shuffle=None):
         dataloader = Multi_Dataset_Loader(dsets, batch_size=64, shuffle=False, drop_last=False)
         return dataloader
 
+    elif mode == 'extract_probs_combined':
+        real_dset = Sorted_Dataset(cfg.real, train=False, include_keys=['images','encodings_vgg16'], include_labels=cfg.real_classes)
+        fake_dset = Sorted_Dataset(cfg.fake, train=False, include_keys=['images','encodings_vgg16'], include_labels=cfg.fake_classes)
+        aug_dset = Sorted_Dataset(cfg.augmented, train=False, include_keys=['images','encodings_vgg16'], include_labels=cfg.augmented_classes)
+        dsets = {'real':real_dset, 'fake':fake_dset, 'augmented':aug_dset}
+        dataloader = Multi_Dataset_Loader(dsets, batch_size=64, shuffle=False, drop_last=False)
+        return dataloader
+
 
     
     elif mode == 'visualization':
