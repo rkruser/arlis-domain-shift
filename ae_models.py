@@ -47,6 +47,10 @@ def get_conv_layer(nmaps, out_maps=None, downsample=None, upsample=None, kernel=
     return conv_constructor(nmaps, out_maps, kernel, stride, padding)
 
 
+# absorb the parameter
+# default layernorm goes over last two dimensions
+def image_layer_norm(n):
+    return nn.LayerNorm((2,2)) #Fix these numbers
 
 class block_sample_layer(nn.Module):
     def __init__(self, nmaps, max_out_maps=None, min_out_maps=None,
@@ -118,8 +122,8 @@ def get_conv_resblock_downsample_layer(nmaps):
 def get_conv_resblock_upsample_layer(nmaps):
     return block_sample_layer(nmaps, upsample=2)
 
-def get_fc_resblock_layer(nmaps):
-    return block_sample_layer(nmaps, get_layer=get_fc_layer, downsample=None, batchnorm_layer=nn.BatchNorm1d)
+def get_fc_resblock_layer(nmaps, norm_layer=nn.BatchNorm1d):
+    return block_sample_layer(nmaps, get_layer=get_fc_layer, downsample=None, batchnorm_layer=norm_layer)
 
 
 
@@ -127,7 +131,7 @@ def get_fc_resblock_layer(nmaps):
 ################  Main networks
 ################################################################################
 class Encoder(nn.Module):
-    def __init__(self, size, ncolors=3, lean=False, very_lean=False, layer_kwargs=None, all_linear=False, add_linear=False):
+    def __init__(self, size, ncolors=3, lean=False, very_lean=False, layer_kwargs=None, all_linear=False, add_linear=False, use_layer_norm=False):
         super().__init__()
         
         assert((size&(size-1) == 0) and size != 0) # Check if exact power of 2
@@ -191,6 +195,9 @@ class Encoder(nn.Module):
                 layer_kwargs.resblock = False
                 layer_kwargs.nlayers = 1
                 layer_kwargs.batchnorm=False
+
+            if use_layer_norm:
+                layer_kwargs.batchnorm_layer = image_layer_norm
         
         
         layers = []
@@ -223,7 +230,7 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, size, ncolors=3, lean=False, very_lean=False, layer_kwargs=None, all_linear=False, add_linear=False):
+    def __init__(self, size, ncolors=3, lean=False, very_lean=False, layer_kwargs=None, all_linear=False, add_linear=False, use_layer_norm=False):
         super().__init__()
         
         assert((size&(size-1) == 0) and size != 0) # Check if exact power of 2
@@ -254,7 +261,10 @@ class Decoder(nn.Module):
                 layer_kwargs.resblock = False
                 layer_kwargs.nlayers = 1
                 layer_kwargs.batchnorm=False
-        
+
+            if use_layer_norm:
+                layer_kwargs.batchnorm_layer = image_layer_norm
+       
         
         layers = []
         
@@ -289,6 +299,7 @@ class Decoder(nn.Module):
         
     def forward(self, x):
         if self.add_linear:
+            x = x.reshape(x.size(0),-1)
             x = self.linear_prelayer(x)
             x = x.reshape(x.size(0), 32, 4, 4)
         x = self.main_layers(x)
@@ -298,14 +309,14 @@ class Decoder(nn.Module):
 
 
 class Phi(nn.Module):
-    def __init__(self, nblocks=4, hidden=1024, num_in=512, num_out=512):
+    def __init__(self, nblocks=4, hidden=1024, num_in=512, num_out=512, norm_layer=nn.BatchNorm1d):
         super().__init__()
         
         self.first_layer = nn.Linear(num_in,hidden)
         
         layers = []
         for _ in range(nblocks):
-            layers.append(get_fc_resblock_layer(hidden))
+            layers.append(get_fc_resblock_layer(hidden, norm_layer=norm_layer))
             
         self.main_layers = nn.Sequential(*layers)
             

@@ -80,38 +80,62 @@ class Feature_Decoder(nn.Module):
 # Phi after feature encoder, not before?
 
 class Combined_Autoencoder:
-    def __init__(self, global_lr=0.001, use_features=True, device='cuda:0', use_simple_nets=False):
+    def __init__(self, global_lr=0.001, use_features=True, device='cuda:0', use_simple_nets=False, use_linear_nets = False, use_layer_norm = False):
 
         self.modules = edict()
 
 
         self.use_simple_nets = use_simple_nets
+        self.use_linear_nets = use_linear_nets
+
         if use_simple_nets:
+            if use_linear_nets:
+                activation = nn.LeakyReLU(0.2,inplace=True)
+            else:
+                activation = nn.Identity()
+
+
             self.modules.encoder = nn.Sequential(
                 nn.Linear(3072,1024),
-                nn.LeakyReLU(0.2, inplace=True),
+                activation,
                 nn.Linear(1024,512)
             ).cuda()
 
             self.modules.decoder = nn.Sequential(
                 nn.Linear(512,1024),
-                nn.LeakyReLU(0.2, inplace=True),
+                activation,
                 nn.Linear(1024,3072)
             ).cuda()
 
         else:
-            self.modules.encoder = Encoder(32, ncolors=3, lean=False, very_lean=False, all_linear=False, add_linear=False).to(device)
-            self.modules.decoder = Decoder(32, ncolors=3, lean=False, very_lean=False, all_linear=False, add_linear=False).to(device)
+            if use_linear_nets:
+                all_linear = True
+                very_lean = True
+                add_linear = True
+                lean=False
+            else:
+                all_linear = False
+                add_linear = False
+                very_lean = False
+                lean = True
+            self.modules.encoder = Encoder(32, ncolors=3, lean=lean, very_lean=very_lean, all_linear=all_linear, add_linear=add_linear, use_layer_norm = use_layer_norm).to(device)
+            self.modules.decoder = Decoder(32, ncolors=3, lean=lean, very_lean=very_lean, all_linear=all_linear, add_linear=add_linear, use_layer_norm=use_layer_norm).to(device)
 
 
-        self.modules.e2z = Phi(num_out=513).to(device) # 513 due to separate norm and direction
-        self.modules.z2e = Phi(num_in=513).to(device)
+
+        if use_layer_norm:
+            norm_layer = nn.LayerNorm
+        else:
+            norm_layer = nn.BatchNorm1d
+
+        self.modules.e2z = Phi(num_out=513, norm_layer=norm_layer).to(device) # 513 due to separate norm and direction
+        self.modules.z2e = Phi(num_in=513, norm_layer=norm_layer).to(device)
         self.modules.adversary = Small_Classifier(linear=False, in_feats=513).to(device)
 
         
         if use_features:
-            self.modules.feature_encode = Feature_Encoder().to(device)
-            self.modules.feature_decode = Feature_Decoder().to(device)
+            self.modules.feature_encode = Feature_Encoder(linear=use_linear_nets).to(device)
+            self.modules.feature_decode = Feature_Decoder(linear=use_linear_nets).to(device)
         self.use_features = use_features
 
 
@@ -251,7 +275,7 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
 
     phase = 0
     for epoch in range(n_epochs):
-        print("*******epoch",epoch)
+        print("***************************epoch",epoch, "*************************")
         for i, batch in enumerate(dataloader):
             x_real = batch['real'][0].cuda()
             x_fake = batch['fake'][1].cuda()
@@ -313,13 +337,18 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
                 else:
                     recon_feat_loss = torch.tensor(0.0)
 
-                # Tracking the losses
-                loss_str = "z_norm_loss: {0}, z_cosine_loss: {1}, recon_loss: {2}\nrecon_feat_loss: {3}, adv_loss: {4}, ring_loss: {5}".format(z_norm_loss.item(), z_cosine_loss.item(), recon_loss.item(), recon_feat_loss.item(), adv_loss.item(), ring_loss.item())
-                # Tracking the z norms
-                norm_str = "real_norms: {0}, fake_norms: {1}".format(z_real_pred_norms.mean().item(), z_fake_pred_norms.mean().item())
-                loss_str = loss_str + '\n' + norm_str
-                loss_str += '\nz_aug_norm_diffs = {0}'.format((z_aug_pred_norms-512**0.5).abs().mean().item())
-                #loss_str += '\n'+str(z_aug_pred_norms[:20].detach().cpu())
+
+                if (i>1) and ((i//2)%100 == 0):
+                    # Tracking the losses
+                    loss_str = "z_norm_loss: {0}, z_cosine_loss: {1}, recon_loss: {2}\nrecon_feat_loss: {3}, adv_loss: {4}, ring_loss: {5}".format(z_norm_loss.item(), z_cosine_loss.item(), recon_loss.item(), recon_feat_loss.item(), adv_loss.item(), ring_loss.item())
+                    # Tracking the z norms
+                    norm_str = "real_norms: {0}, fake_norms: {1}".format(z_real_pred_norms.mean().item(), z_fake_pred_norms.mean().item())
+                    loss_str = loss_str + '\n' + norm_str
+                    loss_str += '\nz_aug_norm_diffs = {0}, z_aug_norm_means={1}'.format((z_aug_pred_norms-512**0.5).abs().mean().item(), z_aug_pred_norms.mean().item())
+                    #loss_str += '\n'+str(z_aug_pred_norms[:20].detach().cpu())
+
+                    print(i)
+                    print(loss_str)
 
 
                 # Add all losses and step optimizer
@@ -330,6 +359,7 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
                 model.zero_grad()
                 total_loss.backward()
                 model.step_optim()
+
 
 
 
@@ -348,11 +378,8 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
                 adv_loss.backward()
                 model.step_optim(mode='adversary')
 
-                loss_str = "adv_loss: {0}".format(adv_loss.item())
+#                loss_str = "adv_loss: {0}".format(adv_loss.item())
 
-            if (i>1) and ((i%100 == 0) or (i%100 == 1)):
-                print(i)
-                print(loss_str)
 
 
             phase = 1-phase
