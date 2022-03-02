@@ -363,6 +363,7 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
 ### Extracting info ####
 
 def extract_probabilities_combined(model_path, model_name_prefix, data_cfg):
+    print("In extract probs combined")
     multi_loader = get_dataloaders(data_cfg, 'prob_stage')   
     
     model = pickle.load(open(data_cfg.prob_stage.model_file,'rb'))
@@ -393,6 +394,9 @@ def extract_probabilities_combined(model_path, model_name_prefix, data_cfg):
             print("  {0} of {1}".format(i,len(dataloader)))
             ims = batch[0]
             ims = ims.cuda()
+
+            if hasattr(model, 'use_simple_nets') and model.use_simple_nets:
+                ims = ims.reshape(ims.size(0),-1)
             e_c = model.modules.encoder(ims)
             e_c = e_c.reshape(e_c.size(0),-1)
 
@@ -402,22 +406,34 @@ def extract_probabilities_combined(model_path, model_name_prefix, data_cfg):
                 e_c = model.modules.feature_encode(e_c,features)
            
 
+            # Predict z and convert it back into 512-dimensional form 
             e_c = e_c.detach()
             e_c.requires_grad_(True)
             z_predicted = model.modules.e2z(e_c)
-
+            z_norm = z_predicted[:,0].unsqueeze(1)
+            z_predicted = z_norm * (z_predicted[:,1:] / torch.norm(z_predicted[:,1:],dim=1).unsqueeze(1))
+            assert(z_predicted.size(1) == 512)           
             forward_jacobians = -jacobian(e_c, z_predicted).detach().cpu()
             e2z_jacobian_probs.append(forward_jacobians)
 
             
+            # Save the predicted norms
+            z_norm = z_norm.detach().squeeze(1)
+            z_norms.append(z_norm)
+
+            # detach the 512-dim z and compute log priors
             z_predicted = z_predicted.detach()
             z_log_priors = log_priors(z_predicted)
             logpriors.append(z_log_priors)
-            z_norms.append(torch.norm(z_predicted.cpu(),dim=1))
-    
-            
+
+            # recompute the norm and scaled direction for gradient purposes, put into 513-dim vector
             z_predicted.requires_grad_(True)
-            e_reconstructed = model.modules.z2e(z_predicted)
+            z_norm_recomp = torch.norm(z_predicted,dim=1).unsqueeze(1)
+            z_directions = z_predicted / z_norm_recomp
+            z_predicted_recomp = torch.cat([z_norm_recomp, z_directions], dim=1)
+            assert(z_predicted_recomp.size(1) == 513)
+    
+            e_reconstructed = model.modules.z2e(z_predicted_recomp)
             inv_jacobians = jacobian(z_predicted, e_reconstructed).detach().cpu()
             z2e_jacobian_probs.append(inv_jacobians)
             
