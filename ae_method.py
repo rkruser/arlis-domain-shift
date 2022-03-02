@@ -635,7 +635,7 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                     'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
                     'real_classes':[ 1 ],
                     'fake_classes':[ 1 ],
-                    'augmented_classes': [0, 2, 3],
+                    'augmented_classes': [0],
                 },
                 'visualize_stage': {
                     'stylegan_file': stylegan_file,
@@ -646,7 +646,7 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                     'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
                     'real_classes':[ 1 ],
                     'fake_classes':[ 1 ],
-                    'augmented_classes': [0,2,3],
+                    'augmented_classes': [0],
                 },
                 'plot_stage': {
                     'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')

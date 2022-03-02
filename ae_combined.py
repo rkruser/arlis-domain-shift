@@ -133,7 +133,7 @@ class Combined_Autoencoder:
 
     # Think about how to do the normalization
     def encode(self, x, features=None):
-        if self.use_simple_nets:
+        if hasattr(self, 'use_simple_nets') and self.use_simple_nets:
             x = x.reshape(x.size(0), -1)
 
         e = self.modules.encoder(x)
@@ -163,12 +163,12 @@ class Combined_Autoencoder:
         else:
             features = None
         
-        if not self.use_simple_nets:
+        if (not hasattr(self, 'use_simple_nets')) or (not self.use_simple_nets):
             e = e.reshape(e.size(0), 32, 4, 4)
 
         x = self.modules.decoder(e)
 
-        if self.use_simple_nets:
+        if hasattr(self, 'use_simple_nets') and self.use_simple_nets:
             x = x.reshape(x.size(0), 3, 32, 32)
 
         return x, features
