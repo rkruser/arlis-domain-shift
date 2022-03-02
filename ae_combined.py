@@ -497,6 +497,31 @@ def extract_probabilities_combined(model_path, model_name_prefix, data_cfg):
     pickle.dump(stats, open(save_path,'wb'))    
 
 
+
+
+
+
+# View the images corresponding to the top and bottom values
+def view_top_and_bottom(values, ims):
+    inds = torch.argsort(values)
+    top_inds = inds[-64:]
+    bottom_inds = inds[:64].flip(0)
+
+
+    print("Top images")
+    view_tensor_images(ims[top_inds])
+
+    print("Bottom images")
+    view_tensor_images(ims[bottom_inds])
+
+    # sort values, get sorted indices
+    # take top/bottom 64
+    # invert bottom
+    # view_tensor_images on the corresponding images
+
+
+
+
 def visualize_model_combined(model_path, model_name_prefix, data_cfg, class_constant_stylegan=1):
     multi_loader = get_dataloaders(data_cfg, 'visualize_stage')
     
@@ -555,10 +580,17 @@ def visualize_model_combined(model_path, model_name_prefix, data_cfg, class_cons
             
 
             real_encoded_norm, real_encoded_code = model.encode(real_ims.cuda(), features=real_features.cuda())
+
+            if 'aug' in name:
+                print('Scaling back to sphere')
+                scale_factor = 512**0.5
+            else:
+                scale_factor = real_encoded_norm.unsqueeze(1) #network predicted norm
+
             reconstructed_real, _ = model.decode(real_encoded_norm, real_encoded_code)
             reconstructed_real = torch.tanh(reconstructed_real).detach().cpu()
 
-            real2stylegan_w = cifar_stylegan_net.mapping(real_encoded_norm.unsqueeze(1)*real_encoded_code, classes)
+            real2stylegan_w = cifar_stylegan_net.mapping(scale_factor*real_encoded_code, classes)
             real2stylegan = cifar_stylegan_net.synthesis(real2stylegan_w, noise_mode='const', force_fp32=True)
             real2stylegan = real2stylegan.detach().cpu()
             
