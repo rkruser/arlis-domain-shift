@@ -795,7 +795,8 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                     'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
                     'real_classes':[ 1 ],
                     'fake_classes':[ 1 ],
-                    'augmented_classes': [0],
+                    'augmented_classes': [],
+                    'use_noise':True
                 },
                 'visualize_stage': {
                     'stylegan_file': stylegan_file,
