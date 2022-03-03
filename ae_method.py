@@ -624,7 +624,7 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                     'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
                     'real_classes':[ 1 ],
                     'fake_classes':[ 1 ],
-                    'augmented_classes': [0,2,3,4,5,6,7,8,9],
+                    'augmented_classes': [2,3,4,5,6,7,8,9],
                     'data_keys': ['images', 'encodings_vgg16']
                 },
                 'prob_stage': {
@@ -865,6 +865,9 @@ if __name__ == '__main__':
     phi_cfg = phi_config(opt.phi_config_key)
     train_cfg = train_config(opt.train_config_key)
     
+
+    print("Data config")
+    print(data_cfg)
     
     if opt.mode == 'train_ae':
         build_and_train_autoencoder(opt.model_path, opt.model_name_prefix, autoencoder_cfg, data_cfg, train_cfg)        
