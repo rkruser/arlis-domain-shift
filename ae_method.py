@@ -774,13 +774,52 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                     'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
                 },
 
-            }
+            },
+            'cifar_1_all_combined_noise': {
+                'ae_stage': {
+                    'mode': 'threeway_combined',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'), # preprocessed standard data
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), # preprocessed fake data
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [],
+                    'use_noise': True,
+                    'data_keys': ['images', 'encodings_vgg16']
+                },
+                'prob_stage': {
+                    'mode': 'extract_probs_combined',
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0],
+                },
+                'visualize_stage': {
+                    'stylegan_file': stylegan_file,
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'mode': 'visualize_combined',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0],
+                },
+                'plot_stage': {
+                    'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
+                },
+
+            },
 
 
         }
     )
     
     return dset_config[key]
+
 
 
 def train_config(key):
@@ -890,8 +929,23 @@ def train_config(key):
                     'significance':5,
                     'use_simple_ring_loss': True
                 }
+            },
+            'combined_ae_layer_no_features': {
+                'ae_stage': {
+                    'n_epochs':200,
+                    'use_features':False,
+                    'ring_loss_after':10, #start using ring loss after this many epochs
+                    'ring_loss_max':10000, # stop using ring loss after this many
+                    'lmbda_norm': 1,
+                    'lmbda_cosine': 1,
+                    'lmbda_recon': 0.5,
+                    'lmbda_feat': 0.5,
+                    'lmbda_adv': 1,
+                    'lmbda_ring': 0.02,
+                    'significance':5,
+                    'use_simple_ring_loss': True
+                }
             }
-
         }
     )
     
@@ -935,6 +989,14 @@ def autoencoder_config(key):
         'combined_ae_layer': {
             'global_lr':0.0001,
             'use_features':True,
+            'use_linear_nets':False,
+            'use_layer_norm':True,
+            'device':'cuda:0',
+            'use_simple_nets':False
+        },
+        'combined_ae_layer_no_features': {
+            'global_lr':0.0001,
+            'use_features':False,
             'use_linear_nets':False,
             'use_layer_norm':True,
             'device':'cuda:0',

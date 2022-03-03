@@ -322,6 +322,25 @@ class Sorted_Dataset(torch.utils.data.Dataset):
         return self.length
 
     
+class Noise_Dataset(torch.utils.data.Dataset):
+    def __init__(self, dset):
+        self.dset = dset
+        print("dset size", self.dset[0].size())
+
+    def __len__(self):
+        return len(self.dset)
+
+    def __getitem__(self, i):
+        item = self.dset[i]
+        
+        sigma = 0.5*torch.rand(1)+0.05
+        item[0] = normalize_to_range(item[0]+sigma*torch.randn_like(item[0]))
+
+        return self.dset[i]
+
+
+
+
     
 def test_sorted_dataset():
     path0 = './models/autoencoder/cifar_sorted.pth'
@@ -509,6 +528,10 @@ def get_dataloaders(cfg, stage, include_keys = None, shuffle=None):
 
         if len(cfg.augmented_classes) > 0:
             aug_dset = Sorted_Dataset(cfg.augmented, train=True, include_keys=cfg.data_keys, include_labels=cfg.augmented_classes)
+            dsets['augmented'] = aug_dset
+        elif 'use_noise' in cfg and cfg.use_noise:
+            aug_dset = Sorted_Dataset(cfg.real, train=True, include_keys=cfg.data_keys, include_labels=cfg.real_classes)
+            aug_dset = Noise_Dataset(aug_dset)
             dsets['augmented'] = aug_dset
         else:
             print("No augmention")
