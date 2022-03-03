@@ -933,6 +933,7 @@ def train_config(key):
             'combined_ae_layer_no_features': {
                 'ae_stage': {
                     'n_epochs':200,
+                    'print_every':20,
                     'use_features':False,
                     'ring_loss_after':10, #start using ring loss after this many epochs
                     'ring_loss_max':10000, # stop using ring loss after this many

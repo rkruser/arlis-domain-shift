@@ -325,7 +325,7 @@ class Sorted_Dataset(torch.utils.data.Dataset):
 class Noise_Dataset(torch.utils.data.Dataset):
     def __init__(self, dset):
         self.dset = dset
-        print("dset size", self.dset[0].size())
+        print("dset size", self.dset[0][0].size())
 
     def __len__(self):
         return len(self.dset)
@@ -530,6 +530,7 @@ def get_dataloaders(cfg, stage, include_keys = None, shuffle=None):
             aug_dset = Sorted_Dataset(cfg.augmented, train=True, include_keys=cfg.data_keys, include_labels=cfg.augmented_classes)
             dsets['augmented'] = aug_dset
         elif 'use_noise' in cfg and cfg.use_noise:
+            print("Using noise")
             aug_dset = Sorted_Dataset(cfg.real, train=True, include_keys=cfg.data_keys, include_labels=cfg.real_classes)
             aug_dset = Noise_Dataset(aug_dset)
             dsets['augmented'] = aug_dset
