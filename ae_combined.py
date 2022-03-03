@@ -256,7 +256,9 @@ def simple_ring_lossfunc(x, dim=512, significance=3, sigma=0.7):
 
 def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_after=10, ring_loss_max=10000,
                    lmbda_norm = 1, lmbda_cosine=1, lmbda_recon=1, lmbda_feat=1, lmbda_adv=1,
-                   lmbda_ring=1, significance=3, use_simple_ring_loss = False
+                   lmbda_ring=1, significance=3, use_simple_ring_loss = False,
+                   use_augmented = True, print_every=100,
+                   use_adversary = True
                    ):
 
     model.train()
@@ -282,12 +284,21 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
             z_fake = batch['fake'][0].cuda()
             z_fake_norms = torch.norm(z_fake,dim=1).detach()
             z_fake_sphere = (z_fake/z_fake_norms.unsqueeze(1)).detach()
-            x_aug = batch['augmented'][0].cuda()
+
+            if use_augmented:
+                x_aug = batch['augmented'][0].cuda()
+            else:
+                x_aug = None
 
             if use_features:
                 x_real_feats = batch['real'][-2].cuda()
                 x_fake_feats = batch['fake'][-2].cuda()
-                x_aug_feats = batch['augmented'][-2].cuda()
+
+                if use_augmented:
+                    x_aug_feats = batch['augmented'][-2].cuda()
+                else:
+                    x_aug_feats = None
+
             else:
                 x_real_feats = None
                 x_fake_feats = None
@@ -297,21 +308,28 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
             if phase == 0: #encoder/decoder
                 z_real_pred_norms, z_real_pred_sphere = model.encode(x_real, features=x_real_feats)
                 z_fake_pred_norms, z_fake_pred_sphere = model.encode(x_fake, features=x_fake_feats)
-                z_aug_pred_norms, z_aug_pred_sphere = model.encode(x_aug, features=x_aug_feats)
+
+                if use_augmented:
+                    z_aug_pred_norms, z_aug_pred_sphere = model.encode(x_aug, features=x_aug_feats)
+                else:
+                    z_aug_pred_norms, z_aug_pred_sphere = None, None
                 
                 # Z losses and adversary losses
                 z_norm_loss = (z_fake_pred_norms - z_fake_norms).square().mean()
                 z_cosine_loss = 1 - (z_fake_sphere*z_fake_pred_sphere).sum(dim=1).mean()
                 # use l2 instead of cosine? or does it not matter?
 
-                z_real_label_pred = model.adversary(z_real_pred_norms, z_real_pred_sphere)
-                z_real_label = torch.ones(z_real_label_pred.size(),device=z_real_label_pred.device)
-                z_fake_label_pred = model.adversary(z_fake_pred_norms, z_fake_pred_sphere)
-                z_fake_label = torch.zeros(z_fake_label_pred.size(),device=z_fake_label_pred.device)
-                adv_loss = bce_lossfunc(z_real_label_pred, z_real_label) + bce_lossfunc(z_fake_label_pred, z_fake_label)
-                adv_loss = (1.0/2)*adv_loss
+                if use_adversary:
+                    z_real_label_pred = model.adversary(z_real_pred_norms, z_real_pred_sphere)
+                    z_real_label = torch.ones(z_real_label_pred.size(),device=z_real_label_pred.device)
+                    z_fake_label_pred = model.adversary(z_fake_pred_norms, z_fake_pred_sphere)
+                    z_fake_label = torch.zeros(z_fake_label_pred.size(),device=z_fake_label_pred.device)
+                    adv_loss = bce_lossfunc(z_real_label_pred, z_real_label) + bce_lossfunc(z_fake_label_pred, z_fake_label)
+                    adv_loss = (1.0/2)*adv_loss
+                else:
+                    adv_loss = torch.tensor(0.0)
 
-                if (epoch >= ring_loss_after) and (epoch <= ring_loss_max):
+                if use_augmented and (epoch >= ring_loss_after) and (epoch <= ring_loss_max):
                     ring_loss = apply_ring_loss(z_aug_pred_norms, significance=significance)
                 else:
                     ring_loss = torch.tensor(0.0)
@@ -319,32 +337,44 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
 
                 # Get reconstructions
                 x_real_recon, x_real_recon_feats = model.decode(z_real_pred_norms, z_real_pred_sphere)
-                x_fake_recon, x_fake_recon_feats = model.decode(z_fake_pred_norms, z_fake_pred_sphere)
-                x_aug_recon, x_aug_recon_feats = model.decode(z_aug_pred_norms, z_aug_pred_sphere)
-
                 x_real_recon = torch.tanh(x_real_recon)
+
+                x_fake_recon, x_fake_recon_feats = model.decode(z_fake_pred_norms, z_fake_pred_sphere)
                 x_fake_recon = torch.tanh(x_fake_recon)
-                x_aug_recon = torch.tanh(x_aug_recon)
+
+
+                if use_augmented:
+                    x_aug_recon, x_aug_recon_feats = model.decode(z_aug_pred_norms, z_aug_pred_sphere)
+                    x_aug_recon = torch.tanh(x_aug_recon)
+                else:
+                    x_aug_recon = None
 
 
                 # Reconstruction losses
-                recon_loss = recon_lossfunc(x_real_recon, x_real) + recon_lossfunc(x_fake_recon, x_fake) + recon_lossfunc(x_aug_recon, x_aug)
+                recon_loss = recon_lossfunc(x_real_recon, x_real) + recon_lossfunc(x_fake_recon, x_fake) 
+                if use_augmented:
+                    recon_loss += recon_lossfunc(x_aug_recon, x_aug)
                 recon_loss = (1.0/3)*recon_loss
 
+
                 if use_features:
-                    recon_feat_loss = l2_lossfunc(x_real_recon_feats, x_real_feats) + l2_lossfunc(x_fake_recon_feats, x_fake_feats) + l2_lossfunc(x_aug_recon_feats, x_aug_feats)
+                    recon_feat_loss = l2_lossfunc(x_real_recon_feats, x_real_feats) + l2_lossfunc(x_fake_recon_feats, x_fake_feats) 
+                    if use_augmented:
+                        recon_feat_loss += l2_lossfunc(x_aug_recon_feats, x_aug_feats)
                     recon_feat_loss = (1.0/2)*recon_feat_loss.mean()
                 else:
                     recon_feat_loss = torch.tensor(0.0)
 
 
-                if (i>1) and ((i//2)%100 == 0):
+                if (i>1) and ((i//2)%print_every == 0):
                     # Tracking the losses
                     loss_str = "z_norm_loss: {0}, z_cosine_loss: {1}, recon_loss: {2}\nrecon_feat_loss: {3}, adv_loss: {4}, ring_loss: {5}".format(z_norm_loss.item(), z_cosine_loss.item(), recon_loss.item(), recon_feat_loss.item(), adv_loss.item(), ring_loss.item())
                     # Tracking the z norms
                     norm_str = "real_norms: {0}, fake_norms: {1}".format(z_real_pred_norms.mean().item(), z_fake_pred_norms.mean().item())
                     loss_str = loss_str + '\n' + norm_str
-                    loss_str += '\nz_aug_norm_diffs = {0}, z_aug_norm_means={1}'.format((z_aug_pred_norms-512**0.5).abs().mean().item(), z_aug_pred_norms.mean().item())
+
+                    if use_augmented:
+                        loss_str += '\nz_aug_norm_diffs = {0}, z_aug_norm_means={1}'.format((z_aug_pred_norms-512**0.5).abs().mean().item(), z_aug_pred_norms.mean().item())
                     #loss_str += '\n'+str(z_aug_pred_norms[:20].detach().cpu())
 
                     print(i)
@@ -382,7 +412,8 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
 
 
 
-            phase = 1-phase
+            if use_adversary:
+                phase = 1-phase
 
 
 

@@ -505,8 +505,13 @@ def get_dataloaders(cfg, stage, include_keys = None, shuffle=None):
         print("augmented classes", cfg.augmented_classes)
         real_dset = Sorted_Dataset(cfg.real, train=True, include_keys=cfg.data_keys, include_labels=cfg.real_classes)
         fake_dset = Sorted_Dataset(cfg.fake, train=True, include_keys=['z_values']+cfg.data_keys, include_labels=cfg.fake_classes)
-        aug_dset = Sorted_Dataset(cfg.augmented, train=True, include_keys=cfg.data_keys, include_labels=cfg.augmented_classes)
-        dsets = {'real':real_dset, 'fake':fake_dset, 'augmented':aug_dset}
+        dsets = {'real':real_dset, 'fake':fake_dset}
+
+        if len(cfg.augmented_classes) > 0:
+            aug_dset = Sorted_Dataset(cfg.augmented, train=True, include_keys=cfg.data_keys, include_labels=cfg.augmented_classes)
+            dsets['augmented'] = aug_dset
+        else:
+            print("No augmention")
 
         shuffle_threeway = True
         if shuffle is not None:
