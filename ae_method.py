@@ -947,6 +947,25 @@ def train_config(key):
                     'significance':5,
                     'use_simple_ring_loss': True
                 }
+            },
+            'combined_ae_layer_no_train_augment_no_adversary_no_features': {
+                'ae_stage': {
+                    'use_augmented':False,
+                    'use_adversary':False,
+                    'print_every':10,
+                    'n_epochs':200,
+                    'use_features':False,
+                    'ring_loss_after':10, #start using ring loss after this many epochs
+                    'ring_loss_max':10000, # stop using ring loss after this many
+                    'lmbda_norm': 1,
+                    'lmbda_cosine': 1,
+                    'lmbda_recon': 0.5,
+                    'lmbda_feat': 0.5,
+                    'lmbda_adv': 1,
+                    'lmbda_ring': 0.02,
+                    'significance':5,
+                    'use_simple_ring_loss': True
+                }
             }
         }
     )
