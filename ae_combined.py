@@ -253,10 +253,17 @@ def simple_ring_lossfunc(x, dim=512, significance=3, sigma=0.7):
     loss = torch.min(x - (T-S), -x + (T+S)).clamp(0)
     return loss.mean()
 
+def simpler_ring_lossfunc(x, dim=512, significance=3, sigma=0.7):
+    T = dim**(0.5)
+    S = significance*sigma
+    loss = (-x + (T+S)).clamp(0)
+    return loss.mean()
+
+
 
 def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_after=10, ring_loss_max=10000,
                    lmbda_norm = 1, lmbda_cosine=1, lmbda_recon=1, lmbda_feat=1, lmbda_adv=1,
-                   lmbda_ring=1, significance=3, use_simple_ring_loss = False,
+                   lmbda_ring=1, significance=3, use_simple_ring_loss = False, use_simpler_ring_loss = False,
                    use_augmented = True, print_every=100,
                    use_adversary = True
                    ):
@@ -269,6 +276,9 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
 
     if use_simple_ring_loss:
         apply_ring_loss = simple_ring_lossfunc
+    elif use_simpler_ring_loss:
+        print("using simpler ring loss")
+        apply_ring_loss = simpler_ring_lossfunc
     else:
         apply_ring_loss = ring_lossfunc
 
@@ -548,7 +558,7 @@ def extract_probabilities_combined(model_path, model_name_prefix, data_cfg):
 
 
 
-def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cfg):
+def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cfg, aug_label="Real planes"):
     # note the off-manifold scores are norms here, not squared norms
     
     #data = pickle.load(open('./models/autoencoder/extracted_info_exp_4.pkl', 'rb'))
@@ -579,9 +589,9 @@ def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cf
     view_top_and_bottom(fake_e2z, fake_images, 'Fake cars, e2z')
     view_top_and_bottom(fake_z2e, fake_images, 'Fake cars, z2e')
 
-    view_top_and_bottom(aug_znorms, aug_images, 'Real planes, z norms')
-    view_top_and_bottom(aug_e2z, aug_images, 'Real planes, e2z')
-    view_top_and_bottom(aug_z2e, aug_images, 'Real planes, z2e')
+    view_top_and_bottom(aug_znorms, aug_images, aug_label+', z norms')
+    view_top_and_bottom(aug_e2z, aug_images, aug_label+', e2z')
+    view_top_and_bottom(aug_z2e, aug_images, aug_label+', z2e')
 
     ###################
 
@@ -590,14 +600,14 @@ def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cf
     plt.title("logpriors")
     plt.hist(data.real.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real planes")
+    plt.hist(data.augmented.log_priors.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
     plt.legend()
     plt.show()
     
     plt.title("e2z jacobians")
     plt.hist(data.real.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real planes")
+    plt.hist(data.augmented.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
     plt.legend()
     plt.show()    
     
@@ -605,14 +615,14 @@ def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cf
     plt.title("e2z combined")
     plt.hist(data.real.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real planes")
+    plt.hist(data.augmented.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
     plt.legend()
     plt.show()       
     
     plt.title("z2e jacobians")
     plt.hist(data.real.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real planes")
+    plt.hist(data.augmented.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
     plt.legend()
     plt.show()     
     
@@ -620,14 +630,14 @@ def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cf
     plt.title("z2e combined")
     plt.hist(data.real.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real planes")
+    plt.hist(data.augmented.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
     plt.legend()
     plt.show()     
     
     plt.title("z norms")
     plt.hist(data.real.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Real planes")
+    plt.hist(data.augmented.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
     plt.legend()
     plt.show()      
 

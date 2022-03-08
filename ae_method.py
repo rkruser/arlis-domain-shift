@@ -453,7 +453,7 @@ def view_extracted_probabilities(model_path, model_name_prefix, data_cfg):
     
     
     
-def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cfg):
+def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cfg, aug_label="Real planes", aug_class=0):
     # note the off-manifold scores are norms here, not squared norms
     
     #data = pickle.load(open('./models/autoencoder/extracted_info_exp_4.pkl', 'rb'))
@@ -462,7 +462,7 @@ def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cf
     ######### View top and bottom of each ###########3
     real_images = torch.load(data_cfg.visualize_stage.real)[1]['test']['images']
     fake_images = torch.load(data_cfg.visualize_stage.fake)[1]['test']['images']
-    aug_images = torch.load(data_cfg.visualize_stage.augmented)[0]['test']['images']
+    aug_images = torch.load(data_cfg.visualize_stage.augmented)[aug_class]['test']['images']
 
     real_znorms = data['real']['z_norms']
     real_e2z = data['real']['e2z_jacobian_probs']
@@ -484,9 +484,9 @@ def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cf
     view_top_and_bottom(fake_e2z, fake_images, 'Fake cars, e2z')
     view_top_and_bottom(fake_z2e, fake_images, 'Fake cars, z2e')
 
-    view_top_and_bottom(aug_znorms, aug_images, 'Real planes, z norms')
-    view_top_and_bottom(aug_e2z, aug_images, 'Real planes, e2z')
-    view_top_and_bottom(aug_z2e, aug_images, 'Real planes, z2e')
+    view_top_and_bottom(aug_znorms, aug_images, aug_label+', z norms')
+    view_top_and_bottom(aug_e2z, aug_images, aug_label+', e2z')
+    view_top_and_bottom(aug_z2e, aug_images, aug_label+', z2e')
 
     ###################
 
@@ -495,14 +495,14 @@ def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cf
     plt.title("logpriors")
     plt.hist(data.real.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real planes")
+    plt.hist(data.augmented.log_priors.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
     plt.legend()
     plt.show()
     
     plt.title("e2z jacobians")
     plt.hist(data.real.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real planes")
+    plt.hist(data.augmented.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
     plt.legend()
     plt.show()    
     
@@ -510,14 +510,14 @@ def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cf
     plt.title("e2z combined")
     plt.hist(data.real.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real planes")
+    plt.hist(data.augmented.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
     plt.legend()
     plt.show()       
     
     plt.title("z2e jacobians")
     plt.hist(data.real.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real planes")
+    plt.hist(data.augmented.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
     plt.legend()
     plt.show()     
     
@@ -525,14 +525,14 @@ def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cf
     plt.title("z2e combined")
     plt.hist(data.real.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real planes")
+    plt.hist(data.augmented.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
     plt.legend()
     plt.show()     
     
     plt.title("z norms")
     plt.hist(data.real.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
-    plt.hist(data.augmented.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Real planes")
+    plt.hist(data.augmented.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
     plt.legend()
     plt.show()      
    
@@ -814,8 +814,42 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                 },
 
             },
-
-
+            'exp_2_cifar_1_all_combined': {
+                'ae_stage': {
+                    'mode': 'threeway_combined',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'), # preprocessed standard data
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), # preprocessed fake data
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0,2,3,4,5,6,7,8],
+                    'data_keys': ['images', 'encodings_vgg16']
+                },
+                'prob_stage': {
+                    'mode': 'extract_probs_combined',
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [9],
+                },
+                'visualize_stage': {
+                    'stylegan_file': stylegan_file,
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'mode': 'visualize_combined',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [9],
+                },
+                'plot_stage': {
+                    'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
+                },
+            }
         }
     )
     
@@ -966,7 +1000,25 @@ def train_config(key):
                     'significance':5,
                     'use_simple_ring_loss': True
                 }
-            }
+            },
+            'combined_ae_layer_simpler_loss': {
+                'ae_stage': {
+                    'n_epochs':200,
+                    'use_features':True,
+                    'ring_loss_after':10, #start using ring loss after this many epochs
+                    'ring_loss_max':10000, # stop using ring loss after this many
+                    'lmbda_norm': 1,
+                    'lmbda_cosine': 1,
+                    'lmbda_recon': 0.5,
+                    'lmbda_feat': 0.5,
+                    'lmbda_adv': 1,
+                    'lmbda_ring': 0.02,
+                    'significance':5,
+                    'use_simple_ring_loss': False,
+                    'use_simpler_ring_loss': True
+                }
+            },
+
         }
     )
     
@@ -1093,6 +1145,9 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_config_key', default='cifar_1_all')
     parser.add_argument('--train_config_key', default='cifar_1_all')
     parser.add_argument('--load_model', action='store_true')
+    parser.add_argument('--aug_label', default='real planes')
+    parser.add_argument('--aug_class', type=int, default=0)
+
     opt = parser.parse_args()
     
     if opt.experiment_suffix is None:
@@ -1154,14 +1209,13 @@ if __name__ == '__main__':
     elif opt.mode == 'plot_probs_combined':
 #        from ae_combined import view_extracted_probabilities_combined
         from ae_combined import view_top_and_bottom
-        view_extracted_probabilities_combined(opt.model_path, opt.model_name_prefix, data_cfg)
+        view_extracted_probabilities_combined(opt.model_path, opt.model_name_prefix, data_cfg, aug_label=opt.aug_label, aug_class=opt.aug_class)
 
            
 
-
-# Mystery:
-#  Why are z norms at test time much different than at training time?
-# (remember, log priors are scaled in computation, but that doesn't seem like enough)
-# This is a huge discrepancy and there is a decent chance it's a simple code flaw
-# also, what if there is no adversary loss but still this improved pressure loss?
+# Next:
+# classifier comparison
+# autoencoder reconstruction errors
+# realnvp phi nets?
+# clean up code
 
