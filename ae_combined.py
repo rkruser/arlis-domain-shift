@@ -270,6 +270,9 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
 
     model.train()
 
+    # ************************************************************************
+    # Note: have these loss functions always been switched?
+    # ***************************
     l1_lossfunc = torch.nn.MSELoss()
     l2_lossfunc = torch.nn.L1Loss()
     bce_lossfunc = torch.nn.BCEWithLogitsLoss()
@@ -682,7 +685,7 @@ def visualize_model_combined(model_path, model_name_prefix, data_cfg, class_cons
         for name, z_codes, fake_features, fake_ims in fake_batches:
             fake_encoded_norm, fake_encoded_code = model.encode(fake_ims.cuda(), features=fake_features.cuda())
             reconstructed_fake, _ = model.decode(fake_encoded_norm, fake_encoded_code)
-            fake2real = torch.tanh(reconstructed_fake).detach().cpu()
+            fake2real = torch.tanh(reconstructed_fake).detach().cpu() # **** This is incorrect - fake2real is something else
 
             
             print(name, "original")

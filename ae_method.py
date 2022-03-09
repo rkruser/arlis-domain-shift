@@ -78,6 +78,19 @@ def build_and_train_combined_autoencoder(model_path, model_name_prefix, autoenco
 
     pickle.dump(model, open(model_fullpath, 'wb'))
 
+def build_and_train_flow_autoencoder(model_path, model_name_prefix, autoencoder_cfg, data_cfg, train_cfg):
+    import ae_flow
+
+    model = ae_flow.AE_Flow(**autoencoder_cfg)
+    dataloader = get_dataloaders(data_cfg, 'ae_stage')
+    
+    model_fullpath = os.path.join(model_path, model_name_prefix+'_autoencoder.pkl')
+    
+    ae_flow.train_flow(model, dataloader, **train_cfg.ae_stage)
+
+    pickle.dump(model, open(model_fullpath, 'wb'))
+
+
 
 def visualize_autoencoder(model_path, model_name_prefix, data_cfg):
     model_fullpath = os.path.join(model_path, model_name_prefix+'_autoencoder.pkl')
@@ -319,6 +332,104 @@ def extract_probabilities(model_path, model_name_prefix, data_cfg):
     pickle.dump(stats, open(save_path,'wb'))    
         
     
+def extract_probabilities_flow(model_path, model_name_prefix, data_cfg):
+    print("In extract probs combined")
+    multi_loader = get_dataloaders(data_cfg, 'prob_stage')   
+
+
+    
+    model = pickle.load(open(data_cfg.prob_stage.model_file,'rb'))
+    model.eval()    
+    
+    
+
+    from model_functions import jacobian, log_priors
+
+    
+    stats = edict()
+    #for name, dataloader in [("class_0", class_0_dataloader), ("class_1", class_1_dataloader),("fake_class_1",fake_class_1_dataloader)]:
+        
+    for name in multi_loader.keys():
+        dataloader = multi_loader.loaders[name]
+        
+        print(name)
+        #e_codes = []
+        e_differences = []
+        e_norms = []
+        z_norms = []
+        im_norms = []
+        logpriors = []
+        z2e_jacobian_probs = []
+        e2z_jacobian_probs = []
+        total_z2e_probs = []
+        total_e2z_probs = []
+        for i, batch in enumerate(dataloader):
+            print("  {0} of {1}".format(i,len(dataloader)))
+            ims = batch[0]
+            ims = ims.cuda()
+            features = batch[1]
+            features = features.cuda()
+
+            ims_recon, feats_recon, logprobs, z_predicted = model.forward(ims, features)
+            logprobs = logprobs.detach().cpu()
+            ims_recon = torch.tanh(ims_recon)
+
+            e2z_jacobian_probs.append(logprobs)           
+
+            
+            # Save the predicted norms
+            z_norm = torch.norm(z_predicted,dim=1).detach().cpu()
+            z_norms.append(z_norm)
+
+            # detach the 512-dim z and compute log priors
+            z_predicted = z_predicted.detach()
+            z_log_priors = log_priors(z_predicted)
+            logpriors.append(z_log_priors)
+
+            
+            
+            _, _, z2e_probs = model.z_sample(z_predicted)
+            z2e_probs = z2e_probs.detach().cpu()
+            z2e_jacobian_probs.append(z2e_probs)
+            
+            diffs = (features - feats_recon).detach().cpu()
+            e_differences.append(diffs)
+            e_norms.append(torch.norm(diffs,dim=1))
+
+            im_diffs = (ims-ims_recon).detach().cpu()
+            im_norms.append(torch.norm(im_diffs.view(im_diffs.size(0),-1),dim=1))
+            
+            
+            total_z2e_probs.append(z_log_priors-z2e_probs)
+            total_e2z_probs.append(z_log_priors+logprobs)
+        
+        stats[name] = edict()
+        #stats[name].e_codes = torch.cat(e_codes)
+        stats[name].e_differences = torch.cat(e_differences)
+        stats[name].e_norms = torch.cat(e_norms)
+        stats[name].log_priors = torch.cat(logpriors)
+        stats[name].z2e_jacobian_probs = torch.cat(z2e_jacobian_probs)
+        stats[name].e2z_jacobian_probs = torch.cat(e2z_jacobian_probs)
+        stats[name].total_z2e_probs = torch.cat(total_z2e_probs)
+        stats[name].total_e2z_probs = torch.cat(total_e2z_probs)
+        stats[name].z_norms = torch.cat(z_norms)
+        stats[name].im_norms = torch.cat(im_norms)
+        
+        
+    
+    # 1. Encode the real data, detach encodings from graph
+    # 2. Run encodings through e2z and z2e, get logprobs and log priors
+    # 3. Plot (3 graphs: jacobian dets, priors, and combined)
+    
+    print(stats.keys())
+    for key in stats:
+        print(stats[key].keys())
+        
+    save_path = os.path.join(model_path, model_name_prefix+'_extracted.pkl')
+    pickle.dump(stats, open(save_path,'wb'))    
+
+
+
 def visualize_model(model_path, model_name_prefix, data_cfg, class_constant_stylegan=1):
     multi_loader = get_dataloaders(data_cfg, 'visualize_stage')
     
@@ -451,8 +562,6 @@ def view_extracted_probabilities(model_path, model_name_prefix, data_cfg):
     plt.show()      
     
     
-    
-    
 def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cfg, aug_label="Real planes", aug_class=0):
     # note the off-manifold scores are norms here, not squared norms
     
@@ -493,6 +602,7 @@ def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cf
     
     
     plt.title("logpriors")
+#    plt.xlim([-1000,0])
     plt.hist(data.real.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
     plt.hist(data.augmented.log_priors.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
@@ -508,6 +618,8 @@ def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cf
     
     
     plt.title("e2z combined")
+#    plt.xlim([-1000,0])
+
     plt.hist(data.real.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
     plt.hist(data.augmented.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
@@ -523,6 +635,113 @@ def view_extracted_probabilities_combined(model_path, model_name_prefix, data_cf
     
     
     plt.title("z2e combined")
+#    plt.xlim([-1000,0])
+
+    plt.hist(data.real.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
+    plt.legend()
+    plt.show()     
+    
+    plt.title("z norms")
+    plt.hist(data.real.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.z_norms.cpu().numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
+    plt.legend()
+    plt.show()      
+   
+   
+    
+def view_extracted_probabilities_flow(model_path, model_name_prefix, data_cfg, aug_label="Real planes", aug_class=0):
+    # note the off-manifold scores are norms here, not squared norms
+    
+    #data = pickle.load(open('./models/autoencoder/extracted_info_exp_4.pkl', 'rb'))
+    data = pickle.load(open(data_cfg.plot_stage.prob_sample_file,'rb'))
+
+    ######### View top and bottom of each ###########3
+    real_images = torch.load(data_cfg.visualize_stage.real)[1]['test']['images']
+    fake_images = torch.load(data_cfg.visualize_stage.fake)[1]['test']['images']
+    aug_images = torch.load(data_cfg.visualize_stage.augmented)[aug_class]['test']['images']
+
+    real_znorms = data['real']['z_norms']
+    real_e2z = data['real']['e2z_jacobian_probs']
+    real_z2e = data['real']['z2e_jacobian_probs']
+
+    fake_znorms = data['fake']['z_norms']
+    fake_e2z = data['fake']['e2z_jacobian_probs']
+    fake_z2e = data['fake']['z2e_jacobian_probs']
+
+    aug_znorms = data['augmented']['z_norms']
+    aug_e2z = data['augmented']['e2z_jacobian_probs']
+    aug_z2e = data['augmented']['z2e_jacobian_probs']
+
+    view_top_and_bottom(real_znorms, real_images, 'Real cars, z norms')
+    view_top_and_bottom(real_e2z, real_images, 'Real cars, e2z')
+    view_top_and_bottom(real_z2e, real_images, 'Real cars, z2e')
+
+    view_top_and_bottom(fake_znorms, fake_images, 'Fake cars, z norms')
+    view_top_and_bottom(fake_e2z, fake_images, 'Fake cars, e2z')
+    view_top_and_bottom(fake_z2e, fake_images, 'Fake cars, z2e')
+
+    view_top_and_bottom(aug_znorms, aug_images, aug_label+', z norms')
+    view_top_and_bottom(aug_e2z, aug_images, aug_label+', e2z')
+    view_top_and_bottom(aug_z2e, aug_images, aug_label+', z2e')
+
+    ###################
+
+    
+    plt.title("features differences")
+    plt.hist(data.real.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.e_norms.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.e_norms.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
+    plt.legend()
+    plt.show()
+
+    plt.title("im differences")
+    plt.hist(data.real.im_norms.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.im_norms.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.im_norms.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
+    plt.legend()
+    plt.show()
+
+
+    
+    plt.title("logpriors")
+#    plt.xlim([-1000,0])
+    plt.hist(data.real.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.log_priors.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.log_priors.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
+    plt.legend()
+    plt.show()
+    
+    plt.title("e2z jacobians")
+    plt.hist(data.real.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.e2z_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
+    plt.legend()
+    plt.show()    
+    
+    
+    plt.title("e2z combined")
+#    plt.xlim([-1000,0])
+
+    plt.hist(data.real.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.total_e2z_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
+    plt.legend()
+    plt.show()       
+    
+    plt.title("z2e jacobians")
+    plt.hist(data.real.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
+    plt.hist(data.fake.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
+    plt.hist(data.augmented.z2e_jacobian_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
+    plt.legend()
+    plt.show()     
+    
+    
+    plt.title("z2e combined")
+#    plt.xlim([-1000,0])
+
     plt.hist(data.real.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Real cars")
     plt.hist(data.fake.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label="Fake cars")    
     plt.hist(data.augmented.total_z2e_probs.numpy(), bins=50, density=True, alpha=0.3, label=aug_label)
@@ -757,7 +976,7 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                     'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
                     'real_classes':[ 1 ],
                     'fake_classes':[ 1 ],
-                    'augmented_classes': [0],
+                    'augmented_classes': [9],
                 },
                 'visualize_stage': {
                     'stylegan_file': stylegan_file,
@@ -768,7 +987,7 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                     'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
                     'real_classes':[ 1 ],
                     'fake_classes':[ 1 ],
-                    'augmented_classes': [0],
+                    'augmented_classes': [9],
                 },
                 'plot_stage': {
                     'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
@@ -1018,6 +1237,12 @@ def train_config(key):
                     'use_simpler_ring_loss': True
                 }
             },
+            'flow_ae': {
+                'ae_stage': {
+                    'n_epochs':200,
+                    'print_every':60
+                }
+            },
 
         }
     )
@@ -1075,7 +1300,9 @@ def autoencoder_config(key):
             'device':'cuda:0',
             'use_simple_nets':False
         },
-
+        'flow_ae': {
+            'lr':0.0002
+        },
     }
     
     return cfg[key]
@@ -1210,6 +1437,17 @@ if __name__ == '__main__':
 #        from ae_combined import view_extracted_probabilities_combined
         from ae_combined import view_top_and_bottom
         view_extracted_probabilities_combined(opt.model_path, opt.model_name_prefix, data_cfg, aug_label=opt.aug_label, aug_class=opt.aug_class)
+    elif opt.mode == 'train_flow':
+        build_and_train_flow_autoencoder(opt.model_path, opt.model_name_prefix, autoencoder_cfg, data_cfg, train_cfg)
+    elif opt.mode == 'visualize_model_flow':
+        from ae_flow import visualize_model_flow
+        visualize_model_flow(opt.model_path, opt.model_name_prefix, data_cfg)
+    elif opt.mode == 'extract_probs_flow':
+#        from ae_combined import extract_probabilities_flow
+        extract_probabilities_flow(opt.model_path, opt.model_name_prefix, data_cfg)
+    elif opt.mode == 'plot_probs_flow':
+        from ae_combined import view_top_and_bottom
+        view_extracted_probabilities_flow(opt.model_path, opt.model_name_prefix, data_cfg, aug_label=opt.aug_label, aug_class=opt.aug_class)
 
            
 
