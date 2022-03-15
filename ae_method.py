@@ -1090,7 +1090,7 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                 },
                 'prob_stage': {
                     'mode': 'extract_probs_combined',
-                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'model_file': os.path.join(model_path, model_name_prefix+'_classifier.pkl'),
                     'real': os.path.join(model_path, 'cifar_sorted.pth'),
                     'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
                     'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
@@ -1108,6 +1108,42 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                     'real_classes':[ 1 ],
                     'fake_classes':[ 1 ],
                     'augmented_classes': [9],
+                },
+                'plot_stage': {
+                    'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
+                },
+            },
+            'classifier_planes': {
+                'clf_stage': {
+                    'mode': 'threeway_combined',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'), # preprocessed standard data
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), # preprocessed fake data
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [2,3,4,5,6,7,8, 9],
+                    'data_keys': ['images', 'encodings_vgg16']
+                },
+                'prob_stage': {
+                    'mode': 'extract_probs_combined',
+                    'model_file': os.path.join(model_path, model_name_prefix+'_classifier.pkl'),
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0],
+                },
+                'visualize_stage': {
+                    'stylegan_file': stylegan_file,
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'mode': 'visualize_combined',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0],
                 },
                 'plot_stage': {
                     'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
@@ -1288,7 +1324,7 @@ def train_config(key):
                 }
             },
             'train_classifier':{
-                'n_epochs': 100,
+                'n_epochs': 10,
                 'print_every': 100
             }
         }
@@ -1506,6 +1542,12 @@ if __name__ == '__main__':
         view_extracted_probabilities_flow(opt.model_path, opt.model_name_prefix, data_cfg, aug_label=opt.aug_label, aug_class=opt.aug_class)
     elif opt.mode == 'train_classifier':
         build_and_train_classifier(opt.model_path, opt.model_name_prefix, classifier_cfg, data_cfg, train_cfg)
+    elif opt.mode == 'extract_probs_classifier':
+        from ae_classifier_helper import extract_probabilities_classifier
+        extract_probabilities_classifier(opt.model_path, opt.model_name_prefix, data_cfg)
+    elif opt.mode == 'plot_probs_classifier':
+        from ae_classifier_helper import view_extracted_probabilities_classifier
+        view_extracted_probabilities_classifier(opt.model_path, opt.model_name_prefix, data_cfg, aug_label=opt.aug_label, aug_class=opt.aug_class)
 
 
 # python ae_method.py --experiment_prefix classifier --classifier_config_key encoder_arch --dataset_config_key classifier --train_config_key train_classifier --mode train_classifier
