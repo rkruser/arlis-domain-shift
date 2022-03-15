@@ -49,8 +49,8 @@ def get_conv_layer(nmaps, out_maps=None, downsample=None, upsample=None, kernel=
 
 # absorb the parameter
 # default layernorm goes over last two dimensions
-def image_layer_norm(n):
-    return nn.LayerNorm((2,2)) #Fix these numbers
+def image_layer_norm(num_planes, layer_size):
+    return nn.LayerNorm((num_planes, layer_size, layer_size)) #Fix these numbers
 
 class block_sample_layer(nn.Module):
     def __init__(self, nmaps, max_out_maps=None, min_out_maps=None,
@@ -62,7 +62,10 @@ class block_sample_layer(nn.Module):
                  #omit_last_if_no_dimension_change=True,
                  resblock=True,
                  batchnorm=True, 
+                 layernorm=False,
+                 layer_size = None,
                  batchnorm_layer=nn.BatchNorm2d, 
+                 layernorm_layer = None,
                  pool=False,
                  pool_layer = nn.MaxPool2d,
                  simple_upsample=False,
@@ -75,18 +78,25 @@ class block_sample_layer(nn.Module):
         for _ in range(nlayers-1):
             if batchnorm:
                 layers.append(batchnorm_layer(nmaps))
+            elif layernorm:
+                layers.append(layernorm_layer(nmaps, layer_size))
             layers.append(nonlinearity) #switched order with batchnorm
             layers.append(get_layer(nmaps))
             
         if resblock:
             if batchnorm:
                 layers.append(batchnorm_layer(nmaps))
+            elif layernorm:
+                layers.append(layernorm_layer(nmaps, layer_size))
             layers.append(nonlinearity) # switched order with batchnorm
             layers.append(get_layer(nmaps))
             
         if len(layers) == 0:
             if batchnorm:
                 layers.append(batchnorm_layer(nmaps))
+            elif layernorm:
+                layers.append(layernorm_layer(nmaps, layer_size))
+
             layers.append(nonlinearity) #switched order with batchnorm
             
         self.last_layer = None
@@ -197,12 +207,17 @@ class Encoder(nn.Module):
                 layer_kwargs.batchnorm=False
 
             if use_layer_norm:
-                layer_kwargs.batchnorm_layer = image_layer_norm
+                layer_kwargs.layernorm_layer = image_layer_norm
+                layer_kwargs.batchnorm = False
+                layer_kwargs.layernorm = True
         
         
         layers = []
+        layer_size = None
         for k in range(count):
-            layers.append(block_sample_layer(2**(min(start_exponent+k, max_exponent)), **layer_kwargs))
+            exponent = min(start_exponent+k, max_exponent)
+            layer_size_exponent = max(start_exponent-k, 2*start_exponent-max_exponent)
+            layers.append(block_sample_layer(2**exponent, layer_size=2**layer_size_exponent, **layer_kwargs))
         # get 512 x 2 x 2
             
         self.initial_layers = nn.Sequential(*initial_layers)

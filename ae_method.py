@@ -90,6 +90,14 @@ def build_and_train_flow_autoencoder(model_path, model_name_prefix, autoencoder_
 
     pickle.dump(model, open(model_fullpath, 'wb'))
 
+def build_and_train_classifier(model_path, model_name_prefix, classifier_cfg, data_cfg, train_cfg):
+    import ae_classifier
+    model = ae_classifier.Classifier(**classifier_cfg)
+    dataloader = get_dataloaders(data_cfg, 'clf_stage')
+    ae_classifier.train(model, dataloader, **train_cfg)
+
+    model_fullpath = os.path.join(model_path, model_name_prefix+'_classifier.pkl')
+    pickle.dump(model, open(model_fullpath, 'wb'))
 
 
 def visualize_autoencoder(model_path, model_name_prefix, data_cfg):
@@ -1068,6 +1076,42 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                 'plot_stage': {
                     'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
                 },
+            },
+            'classifier': {
+                'clf_stage': {
+                    'mode': 'threeway_combined',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'), # preprocessed standard data
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), # preprocessed fake data
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0,2,3,4,5,6,7,8],
+                    'data_keys': ['images', 'encodings_vgg16']
+                },
+                'prob_stage': {
+                    'mode': 'extract_probs_combined',
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [9],
+                },
+                'visualize_stage': {
+                    'stylegan_file': stylegan_file,
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'mode': 'visualize_combined',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [9],
+                },
+                'plot_stage': {
+                    'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
+                },
             }
         }
     )
@@ -1243,13 +1287,23 @@ def train_config(key):
                     'print_every':60
                 }
             },
-
+            'train_classifier':{
+                'n_epochs': 100,
+                'print_every': 100
+            }
         }
     )
     
     return train_cfg[key]
 
 
+def classifier_config(key):
+    cfg = {
+        'encoder_arch':{
+                'lr':0.0001
+            }
+    }
+    return cfg[key]
 
 def autoencoder_config(key):
     cfg = {
@@ -1374,6 +1428,7 @@ if __name__ == '__main__':
     parser.add_argument('--load_model', action='store_true')
     parser.add_argument('--aug_label', default='real planes')
     parser.add_argument('--aug_class', type=int, default=0)
+    parser.add_argument('--classifier_config_key', default='encoder_arch')
 
     opt = parser.parse_args()
     
@@ -1388,6 +1443,7 @@ if __name__ == '__main__':
     
     data_cfg = dataset_config(opt.dataset_config_key, opt.dataset_directory, opt.model_path, opt.model_name_prefix, opt.stylegan_file)
     autoencoder_cfg = autoencoder_config(opt.autoencoder_config_key)
+    classifier_cfg = classifier_config(opt.classifier_config_key)
     phi_cfg = phi_config(opt.phi_config_key)
     train_cfg = train_config(opt.train_config_key)
     
@@ -1448,6 +1504,11 @@ if __name__ == '__main__':
     elif opt.mode == 'plot_probs_flow':
         from ae_combined import view_top_and_bottom
         view_extracted_probabilities_flow(opt.model_path, opt.model_name_prefix, data_cfg, aug_label=opt.aug_label, aug_class=opt.aug_class)
+    elif opt.mode == 'train_classifier':
+        build_and_train_classifier(opt.model_path, opt.model_name_prefix, classifier_cfg, data_cfg, train_cfg)
+
+
+# python ae_method.py --experiment_prefix classifier --classifier_config_key encoder_arch --dataset_config_key classifier --train_config_key train_classifier --mode train_classifier
 
            
 
