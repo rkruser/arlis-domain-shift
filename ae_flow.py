@@ -54,7 +54,7 @@ class ExplicitBatchNorm(nn.Module):
 
 
 class FlowNet(nn.Module):
-    def __init__(self, num_blocks = 4, input_size=512, tan_coeff = 4, norm_layer = nn.BatchNorm1d, batchnorm_momentum=0.1, device='cuda:0'):
+    def __init__(self, num_blocks = 4, input_size=512, tan_coeff = 4, batchnorm_momentum=0.1, device='cuda:0', use_batchnorm=True, use_batchnorm_in_phi=True):
         super().__init__()
 
         assert(input_size%2 == 0)
@@ -69,10 +69,20 @@ class FlowNet(nn.Module):
         self.layer_selection_T = nn.Linear(num_blocks*2, input_size*2, bias=False)
         self.layer_selection_S = nn.Linear(num_blocks*2, input_size*2, bias=False)
 
+
+        if use_batchnorm_in_phi:
+            norm_layer = nn.BatchNorm1d
+        else:
+            norm_layer = nn.LayerNorm
+
         self.T_net = Phi(num_in = input_size//2, num_out=input_size//2, nblocks=4, hidden=input_size*2, norm_layer=norm_layer)
         self.S_net = Phi(num_in = input_size//2, num_out=input_size//2, nblocks=4, hidden=input_size*2, norm_layer=norm_layer)
 
-        self.batch_norms = nn.ModuleList([ExplicitBatchNorm(input_shape=(input_size,), momentum=batchnorm_momentum) for i in range(num_blocks-1)])
+
+        self.use_batchnorm = use_batchnorm
+
+        if use_batchnorm:
+            self.batch_norms = nn.ModuleList([ExplicitBatchNorm(input_shape=(input_size,), momentum=batchnorm_momentum) for i in range(num_blocks-1)])
 
 
     def run_block_forward(self, x, block_num):
@@ -173,7 +183,7 @@ class FlowNet(nn.Module):
             x, lp = self.run_block_forward(x, num)
             log_probs += lp
        #     print(x)
-            if num < (self.num_blocks-1):
+            if self.use_batchnorm and (num < (self.num_blocks-1)):
                 x, lp2 = self.batch_norms[num].forward(x)
                 log_probs += lp2
             

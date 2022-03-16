@@ -329,7 +329,7 @@ def train_combined(model, dataloader, n_epochs, use_features=False, ring_loss_af
                 
                 # Z losses and adversary losses
                 z_norm_loss = (z_fake_pred_norms - z_fake_norms).square().mean()
-                z_cosine_loss = 1 - (z_fake_sphere*z_fake_pred_sphere).sum(dim=1).mean()
+                z_cosine_loss = 1 - (z_fake_sphere*z_fake_pred_sphere).sum(dim=1).mean() # Note: only taking means of right term here; does that matter? (Answer: no, it's fine)
                 # use l2 instead of cosine? or does it not matter?
 
                 if use_adversary:

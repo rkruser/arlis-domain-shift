@@ -490,6 +490,9 @@ def get_dataloaders(cfg, stage, include_keys = None, shuffle=None):
 
     mode = cfg.mode
     print("...dataloader mode", mode)
+
+    if 'batch_size' not in cfg:
+        cfg.batch_size = 128
     
     if mode == 'threeway':
 #         cfg.real
@@ -541,7 +544,7 @@ def get_dataloaders(cfg, stage, include_keys = None, shuffle=None):
         if shuffle is not None:
             print("Manual shuffling spec")
             shuffle_threeway = shuffle
-        dataloader = Multi_Dataset_Loader(dsets, batch_size=128, shuffle=shuffle_threeway, drop_last=True)
+        dataloader = Multi_Dataset_Loader(dsets, batch_size=cfg.batch_size, shuffle=shuffle_threeway, drop_last=True)
         
         return dataloader
 

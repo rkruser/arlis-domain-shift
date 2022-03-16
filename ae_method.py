@@ -99,6 +99,16 @@ def build_and_train_classifier(model_path, model_name_prefix, classifier_cfg, da
     model_fullpath = os.path.join(model_path, model_name_prefix+'_classifier.pkl')
     pickle.dump(model, open(model_fullpath, 'wb'))
 
+def build_and_train_through_model(model_path, model_name_prefix, ae_cfg, data_cfg, train_cfg):
+    import ae_through_gan
+    model = ae_through_gan.Through_Model(data_cfg.visualize_stage.stylegan_file, **ae_cfg)
+    dataloader = get_dataloaders(data_cfg, 'ae_stage')
+    ae_through_gan.train_through_model(model, dataloader, **train_cfg)
+
+    model_fullpath = os.path.join(model_path, model_name_prefix+'_encoder.pkl')
+    pickle.dump(model, open(model_fullpath, 'wb'))
+
+
 
 def visualize_autoencoder(model_path, model_name_prefix, data_cfg):
     model_fullpath = os.path.join(model_path, model_name_prefix+'_autoencoder.pkl')
@@ -1148,7 +1158,45 @@ def dataset_config(key, dataset_directory, model_path, model_name_prefix, styleg
                 'plot_stage': {
                     'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
                 },
+            },
+            'through_model': {
+                'ae_stage': {
+                    'mode': 'threeway_combined',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'), # preprocessed standard data
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), # preprocessed fake data
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [],
+                    'data_keys': ['images'],
+                    'batch_size':16
+                },
+                'prob_stage': {
+                    'mode': 'extract_probs_combined',
+                    'model_file': os.path.join(model_path, model_name_prefix+'_classifier.pkl'),
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0],
+                },
+                'visualize_stage': {
+                    'stylegan_file': stylegan_file,
+                    'model_file': os.path.join(model_path, model_name_prefix+'_autoencoder.pkl'),
+                    'mode': 'visualize_combined',
+                    'real': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'fake': os.path.join(model_path, 'cifar_sorted_stylegan.pth'), 
+                    'augmented': os.path.join(model_path, 'cifar_sorted.pth'),
+                    'real_classes':[ 1 ],
+                    'fake_classes':[ 1 ],
+                    'augmented_classes': [0],
+                },
+                'plot_stage': {
+                    'prob_sample_file': os.path.join(model_path, model_name_prefix+'_extracted.pkl')
+                },
             }
+
         }
     )
     
@@ -1326,6 +1374,12 @@ def train_config(key):
             'train_classifier':{
                 'n_epochs': 10,
                 'print_every': 100
+            },
+            'through_model':{
+                'n_epochs': 20,
+                'print_every': 20,
+                'recon_lambda':0.01,
+                'adversary_lambda':1.0
             }
         }
     )
@@ -1392,6 +1446,10 @@ def autoencoder_config(key):
         },
         'flow_ae': {
             'lr':0.0002
+        },
+        'through_model': {
+            'lr':0.0001,
+            'use_features':True
         },
     }
     
@@ -1548,10 +1606,13 @@ if __name__ == '__main__':
     elif opt.mode == 'plot_probs_classifier':
         from ae_classifier_helper import view_extracted_probabilities_classifier
         view_extracted_probabilities_classifier(opt.model_path, opt.model_name_prefix, data_cfg, aug_label=opt.aug_label, aug_class=opt.aug_class)
+    elif opt.mode == 'train_through_model':
+        build_and_train_through_model(opt.model_path, opt.model_name_prefix, autoencoder_cfg, data_cfg, train_cfg)
 
 
 # python ae_method.py --experiment_prefix classifier --classifier_config_key encoder_arch --dataset_config_key classifier --train_config_key train_classifier --mode train_classifier
 
+# python ae_method.py --experiment_prefix through_model --autoencoder_config_key through_model --dataset_config_key through_model --train_config_key through_model --mode train_through_model
            
 
 # Next:
